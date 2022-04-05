@@ -23,7 +23,7 @@ title: reductor's blog
 description: >- # this means to ignore newlines until "baseurl:"
   This blog is (will be) primarily focused on programming and security related stuff.
 baseurl: "" # the subpath of your site, e.g. /blog
-url: "https://reductor.github.io" # the base hostname & protocol for your site, e.g. http://example.com
+url: "https://reductor.dev" # the base hostname & protocol for your site, e.g. http://example.com
 twitter_username: reductor
 github_username:  reductor
 
