@@ -876,6 +876,8 @@ So it seems like this is not really useable, it's just a bunch of 0's which won'
 
 ## Owner check bug
 
+UPDATE: Thanks to Voltara for pointing out this was not actually a bug, just my poor reading of the code, it's still checking all bytes, the `+ 2` because of the early out checks before.
+
 Looking at the owner checks within deposit and withdraw, it seems like it's only looking at every second byte
 
 ```c
@@ -888,7 +890,7 @@ Looking at the owner checks within deposit and withdraw, it seems like it's only
       uVar2 = 0;
       do {
         if (uVar2 == 30) goto LBB10_15;
-        lVar3 = uVar2 + 2; // <==  Increment by 2 bytes
+        lVar3 = uVar2 + 2; // <==  Increment by 2 bytes (UPDATE: This is wrong it's +2 because of early-out checks)
         lVar4 = uVar2 + 2;
         uVar2 += 1;
       } while (*(longlong *)(in_account_2->x + lVar3) == *(longlong *)(in_program_id->x + lVar4));
