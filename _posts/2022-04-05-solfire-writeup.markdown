@@ -7,6 +7,8 @@ categories: ctf
 
 This is a CTF Security challenge which involves exploiting a Solana on-chain program.
 
+NOTE: This challenge is now part of the [picoGym practice challenges](https://play.picoctf.org/practice?page=1&search=solfire)
+
 **Points**: 500
 
 **Category**: Binary exploitation (pwn)
