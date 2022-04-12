@@ -52,7 +52,7 @@ These accounts also contain the actual currency in Lamports which is the equival
 
 All accounts have an address which is a 256-bit (32-byte) public key often represented in a base-58 encoding, they also have an owner which is the only one allowed to change the data on that account.
 
-An important part of Solana programming is the signing system, which is powered powered by program derived addresses (PDA), these are addresses which get created with a combination of a public key and a seed.
+An important part of Solana programming is the signing system, which is powered by program derived addresses (PDA), these are addresses which get created with a combination of a public key and a seed.
 
 The seed is used to offset the public key (which is on an elliptic), the offset of the seed might still end up on the same elliptic curve (which means a private key could exist out there for it) so part of finding a PDA with a seed involves adding an additional bump byte to it which would push it off the curve if it did end up on it.
 
