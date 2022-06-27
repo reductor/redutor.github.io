@@ -55,7 +55,7 @@ func( T{} );
 </tbody>
 </table>
 
-Now let's see how these value types impact the what happens before and after the call
+Now let's see how these value types impact what happens before and after the function call
 
 :**Behavior before the call**:||||
 &nbsp; | `void func(T)` | `void func(const T &)` | `void func(T &&)`
