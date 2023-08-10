@@ -40,7 +40,7 @@ Due to it's heavy usage on every function call within a thread it's often fairly
 
 ## How c++ coroutine functions work
 
-Just like a normal function arguments are passed using registers and the stack, using the same ABI as previously specified, however the code different is vastly different.
+Just like a normal function arguments are passed using registers and the stack, coroutines are using the same ABI as previously specified, however the code different is vastly different.
 
 Unlike a normal function a coroutine function can suspend and the calling function can continue and call other functions resuming the coroutine later on, or even resume it on a different thread.
 
@@ -125,9 +125,9 @@ There are many other better introductions to coroutines, the way I like to view 
 
 ## You don't "Write async code like sync code"
 
-The phrase "Write async code like sync code" is absolutely terrible, it gives people a false sense of safety, anyone that has written a different amount of asynchronous code knows that it's not that simple.
+The phrase "Write async code like sync code" is absolutely terrible, it gives people a false sense of safety, anyone that has written a decent amount of asynchronous code knows that it's not that simple.
 
-You have an entirely new set of possible bugs which you can run into it that you don't tend to think about because you overlook suspension points as they are easy to write you just put `co_await` and it's handled.
+You have an entirely new set of possible bugs which you can run into, that you don't tend to think about because you overlook suspension points as they are easy to write you just put `co_await` and it's handled.
 
 ## Security: Argument lifetime
 
@@ -187,7 +187,7 @@ task<void> send_all(string s)
 
 Seems good at first right? Well who is keeping all the sources alive if they get removed while `send_all` is in progress.
 
-To do this you would need to modify the source's send to keep it alive
+To do this you could source's send to keep themselves alive
 
 ```cpp
 struct Source : std::enable_shared_from_this<Source>
@@ -197,6 +197,23 @@ task<void> Source::send(string s)
 {
   auto pSelf = this->shared_from_this();
   ...
+}
+```
+
+or do it in the caller
+
+```cpp
+task<void> send_all(string s)
+{
+  std::vector<task<void>> sends;
+  std::vector<shared_ptr<Source>> sources = m_sources;
+  sends.reserve(sources.size());
+  for (auto & source : sources)
+  {
+    sends.push_back(source->send(s));
+  }
+
+  co_await wait_all( sends.begin(), sends.end() );
 }
 ```
 
@@ -248,7 +265,7 @@ With stackless coroutines there are typically two approaches taken for when the 
 
 These two approaches normally get determined based on scheduling decisions where a lazy coroutine makes it easier to schedule the entire coroutine from start to finish on a different thread.
 
-Most of the major coroutine libraries use lazy starting coroutines, there is a proposed Boost.Async which uses eager starting coroutines.
+Most of the major coroutine libraries use lazy starting coroutines, there is a proposed Boost.Async which has eager starting coroutines.
 
 If you you know that a function is always going to only be used with the pattern
 ```cpp
@@ -279,7 +296,7 @@ eager_task<void> fetch_mydata(string_view key)
 }
 ```
 
-You run your tests it works fine, it starts getting wide spread usage suddenly you start seeing random crashes in `fetch_data` (There is no `key` because it's gone)
+You run your tests it works fine, it starts getting wide spread usage suddenly you start seeing random crashes in `fetch_data` (There is no `key` because it's data is gone)
 
 If your lucky you manage to spot this `fetch_mydata` but it could be somewhere completely independent in a different system, then you need to spot that it's not doing `co_return co_await` which is something again most people don't think of.
 
