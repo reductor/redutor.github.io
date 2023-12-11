@@ -200,7 +200,6 @@ Yet, a crucial concern arises—ensuring the referenced sources remain valid thr
 Possible solutions to tackle this issue include:
 
 * Enabling sources to keep themselves alive:
-
 ```cpp
 struct Source : std::enable_shared_from_this<Source>
 {};
@@ -213,7 +212,6 @@ task<void> Source::send(string s)
 ```
 
 * Employing a cloning approach within the caller to retain source validity:
-
 ```cpp
 task<void> send_all(string s)
 {
@@ -230,7 +228,6 @@ task<void> send_all(string s)
 ```
 
 * Tracking outstanding promises to ensure source integrity:
-
 ```cpp
 struct Source
 {
@@ -252,7 +249,6 @@ struct Source
 ```
 
 * Implementing a locking mechanism to manage data access:
-
 ```cpp
 task<void> send_all(string s)
 {
