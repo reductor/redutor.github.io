@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>The downsides of C++ Coroutines | reductor’s blog</title>
+<meta name="generator" content="Jekyll v3.9.0">
+<meta property="og:title" content="The downsides of C++ Coroutines">
+<meta property="og:locale" content="en_US">
+<meta name="description" content="This blog post aims to shed light on the potential risks associated with transitioning a codebase to incorporate coroutines. Continual misuse of coroutines may result in software vulnerabilities and performance degradation.">
+<meta property="og:description" content="This blog post aims to shed light on the potential risks associated with transitioning a codebase to incorporate coroutines. Continual misuse of coroutines may result in software vulnerabilities and performance degradation.">
+<link rel="canonical" href="https://reductor.dev/cpp/2023/08/10/the-downsides-of-coroutines.html">
+<meta property="og:url" content="https://reductor.dev/cpp/2023/08/10/the-downsides-of-coroutines.html">
+<meta property="og:site_name" content="reductor’s blog">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2023-08-10T09:00:00+00:00">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="The downsides of C++ Coroutines">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-08-10T09:00:00+00:00","datePublished":"2023-08-10T09:00:00+00:00","description":"This blog post aims to shed light on the potential risks associated with transitioning a codebase to incorporate coroutines. Continual misuse of coroutines may result in software vulnerabilities and performance degradation.","headline":"The downsides of C++ Coroutines","mainEntityOfPage":{"@type":"WebPage","@id":"https://reductor.dev/cpp/2023/08/10/the-downsides-of-coroutines.html"},"url":"https://reductor.dev/cpp/2023/08/10/the-downsides-of-coroutines.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css">
+<link type="application/atom+xml" rel="alternate" href="https://reductor.dev/feed.xml" title="reductor's blog">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HTPYZN8N34"></script>
+<script>
+  window['ga-disable-G-HTPYZN8N34'] = window.doNotTrack === "1" || navigator.doNotTrack === "1" || navigator.doNotTrack === "yes" || navigator.msDoNotTrack === "1";
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){window.dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-HTPYZN8N34');
+</script>
+</head>
+<body>
+<header class="site-header" role="banner">
+
+  <div class="wrapper">
+<a class="site-title" rel="author" href="/">reductor's blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger">
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewbox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"></path>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav>
+</div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">The downsides of C++ Coroutines</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2023-08-10T09:00:00+00:00" itemprop="datePublished">Aug 10, 2023
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>This blog post aims to shed light on the potential risks associated with transitioning a codebase to incorporate coroutines. <strong>Continual misuse of coroutines may result in software vulnerabilities and performance degradation.</strong></p>
+
+<p>Coroutines, even in the absence of multi-threading, demand a level of caution comparable to writing multi-threaded code due to their asynchronous nature. Understanding and properly managing coroutines is vital as they introduce complexities that, if mishandled, can lead to security vulnerabilities and suboptimal performance in software systems.</p>
+
+<h2 id="contents">Contents</h2>
+
+<ul>
+  <li><a href="#how-normal-functions-and-the-stack-work">How normal functions and the stack work</a></li>
+  <li><a href="#how-c-coroutine-functions-work">How c++ coroutine functions work</a></li>
+  <li><a href="#overlooking-the-complexity-of-asynchronous-code">Overlooking the Complexity of Asynchronous Code</a></li>
+  <li><a href="#safeguarding-argument-lifetime-in-coroutines">Safeguarding Argument Lifetime in Coroutines</a></li>
+  <li><a href="#managing-iterator-and-pointer-invalidation-in-coroutines">Managing Iterator and Pointer Invalidation in Coroutines</a></li>
+  <li><a href="#understanding-eager-vs-lazy-starting-coroutines-for-improved-coroutine-integrity">Understanding Eager vs. Lazy Starting Coroutines for Improved Coroutine Integrity</a></li>
+  <li><a href="#ensuring-robustness-testing-coroutine-suspend-points">Ensuring Robustness: Testing Coroutine Suspend Points</a></li>
+  <li><a href="#memory-allocation-impact-on-coroutine-performance">Memory Allocation Impact on Coroutine Performance</a></li>
+  <li><a href="#managing-stack-bloat-with-halo-in-coroutines">Managing Stack Bloat with HALO in Coroutines</a></li>
+  <li><a href="#impact-of-debug-builds-on-coroutine-performance">Impact of Debug Builds on Coroutine Performance</a></li>
+  <li><a href="#managing-the-cascading-effect-of-stackless-coroutines">Managing the Cascading Effect of Stackless Coroutines</a></li>
+  <li><a href="#comparing-stackful-coroutines-fibers-to-stackless-coroutines">Comparing Stackful Coroutines (Fibers) to Stackless Coroutines</a></li>
+</ul>
+
+<h2 id="how-normal-functions-and-the-stack-work">How normal functions and the stack work</h2>
+
+<p>When a regular function is invoked, its arguments are typically passed using registers. If there’s an excess of arguments or if specified by the Application Binary Interface (ABI), they may be passed using the stack. The exact allocation of registers and stack usage is governed by the ABI specifications.</p>
+
+<p>Internally, upon invocation, the function allocates sufficient stack space to accommodate local variables and temporary values. It’s important to note that not all of these variables end up on the stack; some might reside in registers or could even be optimized out entirely by the compiler.</p>
+
+<p>Upon completion of the function’s execution, the initially reserved stack space is reset to its original state when the function was called, and control is returned to the caller.</p>
+
+<p>ABIs can vary significantly across platforms. Some ABIs may define both volatile and non-volatile registers, necessitating saving and restoration processes as required during function execution.</p>
+
+<p>The stack space responsible for holding arguments, local variables, and temporary values is essentially a standard memory block, often allocated at the thread’s initiation, with each thread possessing its dedicated stack.</p>
+
+<p>This stack memory sees extensive use with every function call within a thread, resulting in frequent access. Consequently, it tends to reside in the L1/L2 cache, making it notably faster to access.</p>
+
+<h2 id="how-c-coroutine-functions-work">How c++ coroutine functions work</h2>
+
+<p>Much like conventional functions where arguments are passed through registers or the stack, coroutines adhere to the same Application Binary Interface (ABI) specifications. However, the behavior and internal mechanisms differ significantly.</p>
+
+<p>A key distinction is that a coroutine function can pause its execution (suspend) while allowing the calling function to continue and invoke other functions. Later, it can resume the paused coroutine, either within the same context or even on a different thread.</p>
+
+<p>Due to this ability to pause and resume, storing local variables, temporaries, and arguments on the stack, as with regular functions, is unfeasible. Instead, these elements need to be stored elsewhere, typically in the heap.</p>
+
+<p>An illustrative example of how a compiler might transform coroutine code can be observed:</p>
+
+<p>Consider the original coroutine code:</p>
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">func</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="kt">int</span> <span class="n">mylocal</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+  <span class="n">co_return</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>The compiler-generated code might appear as follows:</p>
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Struct representing the coroutine state</span>
+<span class="k">struct</span> <span class="nc">func_frame</span>
+<span class="p">{</span>
+  <span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;::</span><span class="n">promise_type</span> <span class="n">__promise</span><span class="p">;</span>
+  <span class="kt">int</span> <span class="n">__step</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+  <span class="k">decltype</span><span class="p">(</span><span class="n">__promise</span><span class="p">.</span><span class="n">initial_suspend</span><span class="p">())</span> <span class="n">__initial_suspend_awaiter</span><span class="p">;</span>
+  <span class="k">decltype</span><span class="p">(</span><span class="n">__promise</span><span class="p">.</span><span class="n">final_suspend</span><span class="p">())</span> <span class="n">__final_suspend_awaiter</span><span class="p">;</span>
+
+  <span class="c1">// Structure to hold local and temporary variables</span>
+  <span class="k">struct</span> 
+  <span class="p">{</span>
+    <span class="c1">// Local and temporary variables reside here</span>
+    <span class="kt">int</span> <span class="n">mylocal</span><span class="p">;</span>
+  <span class="p">}</span> <span class="n">local_and_temps</span><span class="p">;</span>
+
+  <span class="c1">// Function to resume coroutine execution</span>
+  <span class="kt">void</span> <span class="n">resume</span><span class="p">()</span>
+  <span class="p">{</span>
+    <span class="k">switch</span><span class="p">(</span><span class="n">__step</span><span class="p">)</span>
+    <span class="p">{</span>
+      <span class="k">case</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1">// co_await __promise.initial_suspend();</span>
+        <span class="n">__initial_suspend_awaiter</span> <span class="o">=</span> <span class="n">__promise</span><span class="p">.</span><span class="n">initial_suspend</span><span class="p">();</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">__initial_suspend_awaiter</span><span class="p">.</span><span class="n">await_ready</span><span class="p">())</span>
+        <span class="p">{</span>
+          <span class="n">__step</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+          <span class="n">__initial_suspend_awaiter</span><span class="p">.</span><span class="n">await_suspend</span><span class="p">();</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+      <span class="k">case</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">__initial_suspend_awaiter</span><span class="p">.</span><span class="n">await_resume</span><span class="p">();</span>
+        <span class="c1">// .. func body</span>
+        <span class="n">mylocal</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+        <span class="c1">// co_return</span>
+        <span class="n">__promise</span><span class="p">.</span><span class="n">return_void</span><span class="p">();</span>
+        <span class="c1">// co_await __promise.final_suspend();</span>
+        <span class="n">__final_suspend_awaiter</span> <span class="o">=</span> <span class="n">__promise</span><span class="p">.</span><span class="n">final_suspend</span><span class="p">();</span>
+        <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">__final_suspend_awaiter</span><span class="p">.</span><span class="n">await_ready</span><span class="p">())</span>
+        <span class="p">{</span>
+          <span class="n">__final_suspend_awaiter</span><span class="p">.</span><span class="n">await_suspend</span><span class="p">();</span>
+          <span class="k">return</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="k">delete</span> <span class="k">this</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+<span class="p">};</span>
+
+<span class="c1">// Coroutine function transformed into a coroutine frame</span>
+<span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">func</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="n">func_frame</span> <span class="o">*</span> <span class="n">frame</span> <span class="o">=</span> <span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;::</span><span class="n">promise_type</span><span class="o">::</span><span class="k">operator</span> <span class="k">new</span><span class="p">(</span><span class="n">func_frame</span><span class="p">);</span>
+  <span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">ret</span> <span class="o">=</span> <span class="n">frame</span><span class="o">-&gt;</span><span class="n">__promise</span><span class="p">.</span><span class="n">get_return_object</span><span class="p">()</span>
+  <span class="n">frame</span><span class="o">-&gt;</span><span class="n">resume</span><span class="p">();</span>
+  <span class="k">return</span> <span class="n">ret</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>This representation is a conceptual demonstration of the underlying mechanism, showcasing a hidden structure that holds the coroutine state. In practice, certain optimizations might occur; for instance, simple local variables like mylocal could be optimized out. However, in scenarios where variables must persist across suspension points, they may be stored in <code class="language-plaintext highlighter-rouge">local_and_temps</code>. Note that in real scenarios, these variables would be initialized in place, but this is simplified example code.</p>
+
+<p>Coroutines optimized using the HALO (coroutine Heap Allocation eLision Optimization) technique can, if the compiler accurately determines the coroutine’s lifespan and frame layout, embed a copy of <code class="language-plaintext highlighter-rouge">func_frame</code> within the caller’s local variables, which might be either a normal function or another coroutine.</p>
+
+<p>A misconception arises where some believe allocation could happen on-demand at the first suspension point. However, this isn’t feasible as it would require relocating all local variables and temporaries along with their references, which the compiler cannot trace across ABI boundaries.</p>
+
+<h2 id="overlooking-the-complexity-of-asynchronous-code">Overlooking the Complexity of Asynchronous Code</h2>
+
+<p>The widely propagated phrase “Write async code like sync code” carries an inherent danger as it oversimplifies the intricate nature of asynchronous programming. This oversimplification can mislead developers into believing that writing asynchronous code is as straightforward as writing synchronous code. In reality, handling asynchronous operations introduces an entirely new spectrum of potential bugs and complexities that are often overlooked.</p>
+
+<p>When transitioning to asynchronous programming, developers might encounter a false sense of security, assuming that the inclusion of <code class="language-plaintext highlighter-rouge">co_await</code> alone is sufficient to manage asynchronous behavior. However, this belief disregards the subtleties and intricacies of dealing with suspension points. These suspension points, facilitated by <code class="language-plaintext highlighter-rouge">co_await</code>, are deceptively easy to incorporate, leading developers to overlook potential pitfalls and challenges inherent in asynchronous code.</p>
+
+<p>Experienced developers well-versed in asynchronous programming understand that it’s far from straightforward. It demands a deeper understanding of handling concurrency, state management, and error handling, among other considerations. By emphasizing a simplistic “Write async code like sync code” mantra, the broader complexities and potential issues are often disregarded, leaving developers ill-prepared to handle the nuanced challenges posed by asynchronous operations.</p>
+
+<p>Therefore, it’s crucial to approach asynchronous programming with a comprehensive understanding of its intricacies and the potential pitfalls associated with suspension points, rather than relying solely on superficial catchphrases that oversimplify the process. Understanding these complexities is fundamental to writing robust, reliable, and bug-free asynchronous code.</p>
+
+<h2 id="safeguarding-argument-lifetime-in-coroutines">Safeguarding Argument Lifetime in Coroutines</h2>
+
+<p>In the realm of traditional functions, developers often abide by well-established guidelines: if an argument is inexpensive to pass, use pass-by-value; if it’s costly, utilize a const reference. When ownership is transferred, pass by value or rvalue reference is employed.</p>
+
+<p>These ingrained rules are practically second nature to many developers, often applied without conscious thought. However, when these principles are carried over to coroutine functions, unforeseen complications arise.</p>
+
+<p>Consider the following scenarios:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">async_insert</span><span class="p">(</span><span class="n">T</span> <span class="o">&amp;&amp;</span> <span class="n">val</span><span class="p">);</span>
+</code></pre></div></div>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">async_find</span><span class="p">(</span><span class="k">const</span> <span class="n">T</span> <span class="o">&amp;</span><span class="p">);</span>
+</code></pre></div></div>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">async_write</span><span class="p">(</span><span class="n">span</span><span class="o">&lt;</span><span class="n">byte</span><span class="o">&gt;</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>Spotting these issues during code reviews might be challenging. There’s a chance that even a vigilant reviewer could overlook these nuances.</p>
+
+<p>Thankfully, with the promise type in coroutines, there’s a mechanism to capture argument types, enabling the creation of static asserts to detect such cases. This approach empowers developers to implement a safeguard—assertions that statically check the argument types—providing a safety net against potential argument lifetime issues.</p>
+
+<p>By leveraging these mechanisms, developers can proactively identify and rectify problematic argument lifetimes, bolstering the robustness and reliability of coroutine-based code.</p>
+
+<h2 id="managing-iterator-and-pointer-invalidation-in-coroutines">Managing Iterator and Pointer Invalidation in Coroutines</h2>
+
+<p>Consider a scenario where a function employing coroutines suspends during execution, leaving open the possibility of altered global state due to concurrent operations. Let’s delve into an example:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">send_all</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">for</span> <span class="p">(</span><span class="k">auto</span> <span class="o">&amp;</span> <span class="n">source</span> <span class="o">:</span> <span class="n">m_sources</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">co_await</span> <span class="n">source</span><span class="p">.</span><span class="n">send</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>At first glance, most developers focus on the potential invalidation of <code class="language-plaintext highlighter-rouge">m_sources</code> by the <code class="language-plaintext highlighter-rouge">send</code> operation. However, due to coroutine suspension within the loop, other concurrent activities might disrupt the data validity mid-operation.</p>
+
+<p>One way to mitigate this is by queuing all sends and awaiting them collectively:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">send_all</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;&gt;</span> <span class="n">sends</span><span class="p">;</span>
+  <span class="n">sends</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">m_sources</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+  <span class="k">for</span> <span class="p">(</span><span class="k">auto</span> <span class="o">&amp;</span> <span class="n">source</span> <span class="o">:</span> <span class="n">m_sources</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">sends</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">source</span><span class="o">-&gt;</span><span class="n">send</span><span class="p">(</span><span class="n">s</span><span class="p">));</span>
+  <span class="p">}</span>
+
+  <span class="n">co_await</span> <span class="n">wait_all</span><span class="p">(</span> <span class="n">sends</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">sends</span><span class="p">.</span><span class="n">end</span><span class="p">()</span> <span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Yet, a crucial concern arises—ensuring the referenced sources remain valid throughout <code class="language-plaintext highlighter-rouge">send_all</code> execution, especially if any sources are removed concurrently.</p>
+
+<p>Possible solutions to tackle this issue include:</p>
+
+<ul>
+  <li>Enabling sources to keep themselves alive:</li>
+</ul>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">Source</span> <span class="o">:</span> <span class="n">std</span><span class="o">::</span><span class="n">enable_shared_from_this</span><span class="o">&lt;</span><span class="n">Source</span><span class="o">&gt;</span>
+<span class="p">{};</span>
+
+<span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">Source</span><span class="o">::</span><span class="n">send</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">auto</span> <span class="n">pSelf</span> <span class="o">=</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">shared_from_this</span><span class="p">();</span>
+  <span class="c1">// ...</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>Employing a cloning approach within the caller to retain source validity:</li>
+</ul>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">send_all</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;&gt;</span> <span class="n">sends</span><span class="p">;</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">shared_ptr</span><span class="o">&lt;</span><span class="n">Source</span><span class="o">&gt;&gt;</span> <span class="n">sources</span> <span class="o">=</span> <span class="n">m_sources</span><span class="p">;</span>
+  <span class="n">sends</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">sources</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+  <span class="k">for</span> <span class="p">(</span><span class="k">auto</span> <span class="o">&amp;</span> <span class="n">source</span> <span class="o">:</span> <span class="n">sources</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">sends</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">source</span><span class="o">-&gt;</span><span class="n">send</span><span class="p">(</span><span class="n">s</span><span class="p">));</span>
+  <span class="p">}</span>
+
+  <span class="n">co_await</span> <span class="n">wait_all</span><span class="p">(</span> <span class="n">sends</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">sends</span><span class="p">.</span><span class="n">end</span><span class="p">()</span> <span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>Tracking outstanding promises to ensure source integrity:</li>
+</ul>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">Source</span>
+<span class="p">{</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">coroutine_handle</span><span class="o">&gt;</span> <span class="n">dependent_coroutines</span><span class="p">;</span>
+  <span class="o">~</span><span class="n">Source</span><span class="p">()</span>
+  <span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="k">auto</span> <span class="o">&amp;</span> <span class="n">coroutine</span> <span class="o">:</span> <span class="n">dependent_coroutines</span><span class="p">)</span>
+      <span class="n">coro</span><span class="p">.</span><span class="n">destroy</span><span class="p">();</span>
+  <span class="p">}</span>
+
+  <span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">send</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="k">auto</span> <span class="n">corohandle</span> <span class="o">=</span> <span class="n">co_await</span> <span class="n">get_current_coroutine</span><span class="p">{};</span>
+    <span class="n">dependent_coroutines</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span> <span class="n">corohandle</span> <span class="p">);</span>
+    <span class="c1">// ...</span>
+    <span class="n">dependent_coroutines</span><span class="p">.</span><span class="n">erase</span><span class="p">(</span> <span class="n">dependent_coroutines</span><span class="p">.</span><span class="n">find</span><span class="p">(</span> <span class="n">corohandle</span> <span class="p">)</span> <span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<ul>
+  <li>Implementing a locking mechanism to manage data access:</li>
+</ul>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">send_all</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">co_await</span> <span class="n">m_sourcesLock</span><span class="p">.</span><span class="n">read_lock</span><span class="p">();</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;&gt;</span> <span class="n">sends</span><span class="p">;</span>
+  <span class="n">sends</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">m_sources</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+  <span class="k">for</span> <span class="p">(</span><span class="k">auto</span> <span class="o">&amp;</span> <span class="n">source</span> <span class="o">:</span> <span class="n">m_sources</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">sends</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">source</span><span class="o">-&gt;</span><span class="n">send</span><span class="p">(</span><span class="n">s</span><span class="p">));</span>
+  <span class="p">}</span>
+
+  <span class="n">co_await</span> <span class="n">wait_all</span><span class="p">(</span> <span class="n">sends</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">sends</span><span class="p">.</span><span class="n">end</span><span class="p">()</span> <span class="p">);</span>
+  <span class="n">co_await</span> <span class="n">m_sourcesLock</span><span class="p">.</span><span class="n">read_unlock</span><span class="p">();</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Each approach comes with distinct trade-offs in terms of efficiency, complexity, and the potential for handling data integrity. By choosing the right strategy, developers can safeguard against iterator and pointer invalidation issues within coroutine-based systems.</p>
+
+<h2 id="understanding-eager-vs-lazy-starting-coroutines-for-improved-coroutine-integrity">Understanding Eager vs. Lazy Starting Coroutines for Improved Coroutine Integrity</h2>
+
+<p>In the realm of stackless coroutines, two prevalent approaches govern the initiation of coroutine execution: “eager” and “lazy” starting coroutines. Eager coroutines commence execution immediately and persist until the first suspension point, while lazy coroutines start in a suspended state, initiating execution only when specifically resumed.</p>
+
+<p>The choice between these two methods often hinges on scheduling decisions. Lazy coroutines streamline the process of scheduling the entire coroutine from inception to completion on a distinct thread.</p>
+
+<p>While most major coroutine libraries adopt lazy starting coroutines, a proposed concept like Boost.Async champions eager starting coroutines.</p>
+
+<p>Consider a scenario where a function consistently adheres to the pattern:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">co_await</span> <span class="nf">fetch_data</span><span class="p">(</span><span class="s">"key"</span><span class="p">);</span>
+</code></pre></div></div>
+
+<p>In such cases, the immediate <code class="language-plaintext highlighter-rouge">co_await</code> suggests that the referenced <code class="language-plaintext highlighter-rouge">key</code> is maintained by the caller throughout its use. This insight allows for a specific implementation like this:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">eager_task</span><span class="o">&lt;</span><span class="n">string</span><span class="o">&gt;</span> <span class="n">fetch_data</span><span class="p">(</span><span class="n">string_view</span> <span class="n">key</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">auto</span> <span class="n">it</span> <span class="o">=</span> <span class="n">cache</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">key</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">it</span> <span class="o">!=</span> <span class="n">cache</span><span class="p">.</span><span class="n">end</span><span class="p">())</span>
+  <span class="p">{</span>
+    <span class="k">return</span> <span class="n">it</span><span class="o">-&gt;</span><span class="n">second</span><span class="p">;</span>
+  <span class="p">}</span>
+
+  <span class="k">auto</span> <span class="n">data</span> <span class="o">=</span> <span class="n">co_await</span> <span class="n">fetch_remote</span><span class="p">(</span><span class="n">key</span><span class="p">);</span>
+  <span class="n">cache</span><span class="p">.</span><span class="n">emplace</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">data</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>However, a potential pitfall surfaces when a new function is introduced later:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">eager_task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">fetch_mydata</span><span class="p">(</span><span class="n">string_view</span> <span class="n">key</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="k">return</span> <span class="n">fetch_data</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">format</span><span class="p">(</span><span class="s">"mysystem/{}"</span><span class="p">,</span> <span class="n">key</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Initial testing might validate its functionality, but with widespread adoption, unexpected crashes could surface in <code class="language-plaintext highlighter-rouge">fetch_data</code> due to missing <code class="language-plaintext highlighter-rouge">key</code> data.</p>
+
+<p>Spotting such issues in a vast codebase becomes challenging. Detecting scenarios where <code class="language-plaintext highlighter-rouge">co_return co_await</code> is not performed, leading to data loss, requires meticulous code inspection.</p>
+
+<p>Had the coroutines been lazy, such issues could have manifested more consistently. Tools like address sanitizers or other debugging utilities could potentially detect use-after-free scenarios, offering clearer indications of issues.</p>
+
+<h2 id="ensuring-robustness-testing-coroutine-suspend-points">Ensuring Robustness: Testing Coroutine Suspend Points</h2>
+
+<p>As highlighted in the earlier security-related instances, the act of functions suspending and resuming within coroutines can potentially introduce numerous unforeseen bugs.</p>
+
+<p>To mitigate these risks, it becomes crucial to regularly test the suspend points within your coroutines. However, achieving this task poses a challenge as the decision to suspend or resume is not under the control of the caller of an awaitable.</p>
+
+<p>Consequently, incorporating support for testing suspend points necessitates integrating it into every awaitable or adopting techniques like <code class="language-plaintext highlighter-rouge">await_transform</code>. Both approaches, especially when considering potential incorporation through dependency injection, present intricate challenges.</p>
+
+<p>Building support for this testing paradigm into each awaitable involves significant effort and meticulous implementation to ensure comprehensive coverage. Alternatively, leveraging <code class="language-plaintext highlighter-rouge">await_transform</code> introduces complexities, as its integration across a codebase demands careful consideration of potential implications and necessitates a systematic approach to maintain code readability and modularity.</p>
+
+<p>The intricacies involved in establishing a robust testing mechanism for suspend points within coroutines underscore the importance of strategic planning and meticulous execution. Adoption of such practices aligns with the quest for code resilience and reliability, albeit at the cost of navigating complexities inherent in such implementations.</p>
+
+<h2 id="memory-allocation-impact-on-coroutine-performance">Memory Allocation Impact on Coroutine Performance</h2>
+
+<p>Upon invocation of a coroutine function that hasn’t undergone allocation elision, memory allocation occurs for its coroutine frame/state. Furthermore, in attempts to mitigate challenges associated with argument lifetime issues, iterator/pointer invalidation, additional memory allocations might arise.</p>
+
+<p>Hopes for the optimization potential of components like the thread-local tcache in glibc, which stores 7 equally sized allocations across 64 bins ranging from 24-1024 bytes, might arise, anticipating faster memory management.</p>
+
+<p>However, consider the scenario outlined in the <code class="language-plaintext highlighter-rouge">send_all</code> function using <code class="language-plaintext highlighter-rouge">string</code>. For each invocation of <code class="language-plaintext highlighter-rouge">send</code> on every source within the loop, there arise two additional allocations: one for the coroutine frame and another for the string argument. If these allocations are of similar size, having 7 sources could potentially deplete the tcache. When the size of the string and the coroutine frame falls within the same tcache bucket, merely 4 such allocations could exhaust a tcache bucket.</p>
+
+<p>This scenario highlights the potential strain on memory resources due to coroutine-related allocations, emphasizing the impact on memory management mechanisms like the tcache. Such insights are crucial for optimizing memory usage in scenarios where coroutine invocations and associated memory allocations are frequent and can influence the overall performance of the system.</p>
+
+<h2 id="managing-stack-bloat-with-halo-in-coroutines">Managing Stack Bloat with HALO in Coroutines</h2>
+
+<p>Heap Allocation eLision Optimization (HALO) in coroutines presents an appealing approach, enabling coroutine frames to remain local without necessitating placement on the heap. However, while this optimization might seem straightforward initially, it can inadvertently lead to potentially large stack frames under specific scenarios.</p>
+
+<p>Consider the following example:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">post_metric</span><span class="p">(</span><span class="n">string</span> <span class="n">name</span><span class="p">,</span> <span class="kt">int</span> <span class="n">value</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="kt">char</span> <span class="n">sendbuffer</span><span class="p">[</span><span class="mi">16</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">];</span>
+  <span class="c1">// ...</span>
+<span class="p">}</span>
+
+<span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">post_metrics</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="n">std</span><span class="o">::</span><span class="n">array</span> <span class="n">metrics</span> <span class="p">{</span> 
+    <span class="n">post_metric</span><span class="p">(</span><span class="s">"a"</span><span class="p">,</span> <span class="p">...);</span>
+    <span class="n">post_metric</span><span class="p">(</span><span class="s">"b"</span><span class="p">,</span> <span class="p">...);</span>
+    <span class="n">post_metric</span><span class="p">(</span><span class="s">"c"</span><span class="p">,</span> <span class="p">...);</span>
+    <span class="c1">// ...</span>
+  <span class="p">};</span>
+  <span class="n">co_await</span> <span class="n">when_all</span><span class="p">(</span><span class="n">begin</span><span class="p">(</span><span class="n">metrics</span><span class="p">),</span> <span class="n">end</span><span class="p">(</span><span class="n">metrics</span><span class="p">));</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Each invocation of <code class="language-plaintext highlighter-rouge">post_metric</code><code class="language-plaintext highlighter-rouge"> within </code>post_metrics`` necessitates a stack frame allocation of at least 16KB. As multiple parallel calls stemming from <code class="language-plaintext highlighter-rouge">post_metrics</code> may be simultaneously active, the cumulative stack size could grow considerably larger.</p>
+
+<p>Furthermore, consider a conditional scenario in another coroutine:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">func</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">cond</span><span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">co_await</span> <span class="n">func1</span><span class="p">();</span>
+  <span class="p">}</span>
+  <span class="k">else</span>
+  <span class="p">{</span>
+    <span class="n">co_await</span> <span class="n">func2</span><span class="p">();</span>
+    <span class="n">co_await</span> <span class="n">post_metrics</span><span class="p">();</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>In this instance, the stack size of <code class="language-plaintext highlighter-rouge">func</code> potentially includes the size of <code class="language-plaintext highlighter-rouge">post_metrics</code>. Even if the condition (<code class="language-plaintext highlighter-rouge">cond</code>) evaluates to <code class="language-plaintext highlighter-rouge">true</code>, recursion within <code class="language-plaintext highlighter-rouge">func1</code> and <code class="language-plaintext highlighter-rouge">func2</code> might further contribute to the stack size of <code class="language-plaintext highlighter-rouge">func</code>.</p>
+
+<p>Moreover, compiler optimizations could determine HALO decisions based on basic block probability. This means different compilers might employ HALO on diverging branches, leading to inconsistent performance and varying stack sizes based on the compiler’s optimization strategy.</p>
+
+<p>Managing stack bloat resulting from HALO optimization involves careful consideration of potential stack frame sizes and recursive coroutine calls to ensure optimal memory utilization and consistent performance across different execution paths.</p>
+
+<h2 id="impact-of-debug-builds-on-coroutine-performance">Impact of Debug Builds on Coroutine Performance</h2>
+
+<p>Even the simplest coroutine, such as the following:</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">task</span><span class="o">&lt;</span><span class="kt">void</span><span class="o">&gt;</span> <span class="n">func</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="n">co_return</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>internally involves multiple function calls:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>func()
+promise_type::operator new()
+promise_type::promise_type()
+promise_type::get_return_value()
+promise_type::initial_suspend()
+initial_suspend::initial_suspend()
+initial_suspend::await_ready()
+initial_suspend::await_suspend() [opt]
+initial_suspend::await_resume()
+promise_type::return_void()
+final_suspend::final_suspend()
+final_suspend::await_ready()
+final_suspend::await_suspend() [opt]
+promise_type::operator delete()
+</code></pre></div></div>
+<p>Under optimized conditions, many of these functions are often inlined, eliminating the associated function call overheads.</p>
+
+<p>However, when executing in a debug build, these functions might exist in an unoptimized state. This lack of optimization could lead to increased overhead due to multiple function calls, impacting the performance of coroutine-based code significantly.</p>
+
+<p>Developers need to be cautious when evaluating coroutine performance in debug builds, as the absence of optimizations may introduce additional overhead from function calls that would otherwise be streamlined in release builds. Profiling and performance analysis tools become invaluable in assessing and addressing these performance disparities between debug and release configurations.</p>
+
+<h2 id="managing-the-cascading-effect-of-stackless-coroutines">Managing the Cascading Effect of Stackless Coroutines</h2>
+
+<p>In C++, stackless coroutines operate by enabling suspension solely within individual functions rather than affecting the entire call stack.</p>
+
+<p>The nature of these coroutines necessitates that suspension propagates up the call stack, enabling concurrent execution across multiple functions or expecting these functions to be passed into a dispatcher. Consequently, any callers up the call stack must also adopt coroutine behavior.</p>
+
+<p>This propagation has a potentially expansive impact, quickly encompassing a broader scope within the codebase. A few deeply nested function calls that require coroutine behavior can prompt the widespread adoption of coroutine functionality throughout the majority of the code.</p>
+
+<p>To counteract this viral nature, one strategy is to prioritize waiting over suspending further up the call tree. However, this approach might inadvertently limit the potential for parallelism.</p>
+
+<p>Managing the spread of stackless coroutines necessitates a careful balance between leveraging their concurrent capabilities and judiciously containing their propagation throughout the codebase.</p>
+
+<h2 id="comparing-stackful-coroutines-fibers-to-stackless-coroutines">Comparing Stackful Coroutines (Fibers) to Stackless Coroutines</h2>
+
+<p>Stackful coroutines, often referred to as fibers, provide a user-mode threading mechanism where a new thread is spawned upfront, allowing normal function calls and switching between fibers.</p>
+
+<p>While stackful coroutines share some security concerns with stackless coroutines, their distinct advantage lies in having an actual stack, narrowing the range of lifetime issues that could occur.</p>
+
+<p>In terms of performance, stackful coroutines differ significantly. They lack the overhead of potentially additional memory allocations or a series of extra functions per call, unlike stackless coroutines. However, they also miss out on the optimizer’s ability to fully inline functions, limiting the optimization possibilities compared to stackless counterparts.</p>
+
+<p>A notable distinction is that stackful coroutines do not exhibit a viral nature. Unlike stackless coroutines, where the entire call stack must adopt coroutine behavior for suspension and switching, stackful coroutines enable switching between coroutines without requiring the entire call stack to accept such changes. However, this flexibility also means that a function might be suspended unexpectedly without explicit acknowledgment.</p>
+
+<p>Understanding these differences between stackful and stackless coroutines is essential for making informed decisions regarding concurrency models and their suitability for specific use cases.</p>
+
+  </div>
+<a class="u-url" href="/cpp/2023/08/10/the-downsides-of-coroutines.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">reductor's blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">
+</li>
+</ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+<ul class="social-media-list">
+<li><a href="https://github.com/reductor"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">reductor</span></a></li>
+<li><a href="https://www.twitter.com/reductor"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#twitter"></use></svg> <span class="username">reductor</span></a></li>
+</ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>This blog is (will be) primarily focused on programming and security related stuff.</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

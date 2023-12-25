@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Pass-by-value vs Pass-by-reference | reductor’s blog</title>
+<meta name="generator" content="Jekyll v3.9.0">
+<meta property="og:title" content="Pass-by-value vs Pass-by-reference">
+<meta property="og:locale" content="en_US">
+<meta name="description" content="Let’s dig into the age old question, should you pass-by-value or pass-by-reference in C++? (or by pointer in C)">
+<meta property="og:description" content="Let’s dig into the age old question, should you pass-by-value or pass-by-reference in C++? (or by pointer in C)">
+<link rel="canonical" href="https://reductor.dev/cpp/2022/06/27/pass-by-value-vs-pass-by-reference.html">
+<meta property="og:url" content="https://reductor.dev/cpp/2022/06/27/pass-by-value-vs-pass-by-reference.html">
+<meta property="og:site_name" content="reductor’s blog">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2022-06-27T09:00:00+00:00">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="Pass-by-value vs Pass-by-reference">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2022-06-27T09:00:00+00:00","datePublished":"2022-06-27T09:00:00+00:00","description":"Let’s dig into the age old question, should you pass-by-value or pass-by-reference in C++? (or by pointer in C)","headline":"Pass-by-value vs Pass-by-reference","mainEntityOfPage":{"@type":"WebPage","@id":"https://reductor.dev/cpp/2022/06/27/pass-by-value-vs-pass-by-reference.html"},"url":"https://reductor.dev/cpp/2022/06/27/pass-by-value-vs-pass-by-reference.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css">
+<link type="application/atom+xml" rel="alternate" href="https://reductor.dev/feed.xml" title="reductor's blog">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HTPYZN8N34"></script>
+<script>
+  window['ga-disable-G-HTPYZN8N34'] = window.doNotTrack === "1" || navigator.doNotTrack === "1" || navigator.doNotTrack === "yes" || navigator.msDoNotTrack === "1";
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){window.dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-HTPYZN8N34');
+</script>
+</head>
+<body>
+<header class="site-header" role="banner">
+
+  <div class="wrapper">
+<a class="site-title" rel="author" href="/">reductor's blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger">
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewbox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"></path>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav>
+</div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Pass-by-value vs Pass-by-reference</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2022-06-27T09:00:00+00:00" itemprop="datePublished">Jun 27, 2022
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>Let’s dig into the age old question, should you pass-by-value or pass-by-reference in C++? (or by pointer in C)</p>
+
+<p>This blog post is mostly a re-post of a <a href="https://www.reddit.com/r/cpp/comments/odd2kz/is_passbyvalue_slower_than_passbyrvaluereference/h40hao4/">reddit comment</a> that I made on r/cpp about pass-by-value and pass-by-reference, with some minor improvements, to make it easier to reference and save.</p>
+
+<p>The answer isn’t as easy as it might seem, it depends on the Application Binary Interface (ABI) and your use-cases, there isn’t a one size fits all answer, this is even more the case for anything which is built to be cross platform.</p>
+
+<p>First it’s probably good to break the problem down into two parts (focusing solely on performance, ignoring readability and maintainability which should often be more important)</p>
+
+<ul>
+  <li>The language construct costs (copying, moving, etc)</li>
+  <li>Compiler implications (aliasing, pointer provenance, etc)</li>
+  <li>The ABI (the stack, registers, etc)</li>
+</ul>
+
+<h2 id="language-constructs">Language constructs</h2>
+
+<p>tl;dr Pass-by-value can end up with unnecessary copies</p>
+
+<p>To help understand the language constructs, here is a bit of a refresher on value types</p>
+
+<table>
+<tbody>
+<tr>
+<th>Calling with lvalue</th>
+<td>
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">T</span> <span class="n">data</span><span class="p">;</span>
+<span class="n">func</span><span class="p">(</span> <span class="n">data</span> <span class="p">);</span>
+</code></pre></div></div>
+</td>
+</tr>
+<tr>
+<th>Calling with xvalue (type of rvalue)<br>
+NOTE: <code class="language-plaintext highlighter-rouge">data</code> can be used after <code class="language-plaintext highlighter-rouge">func</code>
+</th>
+<td>
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">T</span> <span class="n">data</span><span class="p">;</span>
+<span class="n">func</span><span class="p">(</span> <span class="n">std</span><span class="o">::</span><span class="n">move</span><span class="p">(</span> <span class="n">data</span> <span class="p">)</span> <span class="p">);</span>
+</code></pre></div></div>
+</td>
+</tr>
+<tr>
+<th>Calling with prvalue (type of rvalue)<br>
+NOTE: The input arg can’t be used after <code class="language-plaintext highlighter-rouge">func</code>
+</th>
+<td>
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">func</span><span class="p">(</span> <span class="n">T</span><span class="p">{}</span> <span class="p">);</span>
+</code></pre></div></div>
+</td>
+</tr>
+</tbody>
+</table>
+
+<p>Now let’s see how these value types impact what happens before and after the function call</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center" colspan="4"><strong>Behavior before the call</strong></th>
+      
+      
+      
+    </tr>
+    <tr>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const T &amp;)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T &amp;&amp;)</code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left"><strong>Calling with lvalue</strong></td>
+      <td style="text-align: left">Copies</td>
+      <td style="text-align: left">Reference</td>
+      <td style="text-align: left">N/A</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with xvalue</strong></td>
+      <td style="text-align: left">Moves</td>
+      <td style="text-align: left">Reference</td>
+      <td style="text-align: left">Reference</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with prvalue</strong></td>
+      <td style="text-align: left">In-place construct</td>
+      <td style="text-align: left">Reference</td>
+      <td style="text-align: left">Reference</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center" colspan="4" rowspan="2">
+<strong>Behavior after if the caller does not move or copy</strong>
+<br>
+arg.something()</th>
+      
+      
+      
+    </tr>
+    <tr>
+      
+      
+      
+      
+    </tr>
+    <tr>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const T &amp;)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T &amp;&amp;)</code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left"><strong>Calling with lvalue</strong></td>
+      <td style="text-align: left">Unnecessary copy</td>
+      <td style="text-align: left">No overhead</td>
+      <td style="text-align: left">N/A</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with xvalue</strong></td>
+      <td style="text-align: left">Unnecessary move</td>
+      <td style="text-align: left">No overhead</td>
+      <td style="text-align: left">No overhead</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with prvalue</strong></td>
+      <td style="text-align: left">No overhead</td>
+      <td style="text-align: left">No overhead</td>
+      <td style="text-align: left">No overhead</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center" colspan="4" rowspan="2">
+<strong>Behavior after if the caller moves</strong>
+<br>
+other = std::move( arg );</th>
+      
+      
+      
+    </tr>
+    <tr>
+      
+      
+      
+      
+    </tr>
+    <tr>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const T &amp;)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T &amp;&amp;)</code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left"><strong>Calling with lvalue</strong></td>
+      <td style="text-align: left">Copy and move</td>
+      <td style="text-align: left">N/A</td>
+      <td style="text-align: left">Compile error</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with xvalue</strong></td>
+      <td style="text-align: left">Two moves</td>
+      <td style="text-align: left">N/A</td>
+      <td style="text-align: left">One move</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with prvalue</strong></td>
+      <td style="text-align: left">One move</td>
+      <td style="text-align: left">N/A</td>
+      <td style="text-align: left">One move</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center" colspan="4" rowspan="2">
+<strong>Behavior after if the caller copies</strong>
+<br>
+other = arg;</th>
+      
+      
+      
+    </tr>
+    <tr>
+      
+      
+      
+      
+    </tr>
+    <tr>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const T &amp;)</code></th>
+      <th style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(T &amp;&amp;)</code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left"><strong>Calling with lvalue</strong></td>
+      <td style="text-align: left">Two copies</td>
+      <td style="text-align: left">One copy</td>
+      <td style="text-align: left">N/A</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with xvalue</strong></td>
+      <td style="text-align: left">Move and Copy</td>
+      <td style="text-align: left">One copy</td>
+      <td style="text-align: left">One copy</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><strong>Calling with prvalue</strong></td>
+      <td style="text-align: left">One copy</td>
+      <td style="text-align: left">One copy</td>
+      <td style="text-align: left">One copy</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="compiler-implications">Compiler implications</h2>
+
+<p>tl;dr Pass by reference can create additional aliasing situations</p>
+
+<p>In order for the compiler to do optimizations it must make assumptions based on the code it is provided, one of the important ones is understanding who owns what pointer (or reference) and if this pointer/reference will be modified over a calling boundary.</p>
+
+<p>In order to understand some of the implications of this aliasing, let’s look at a simple example (<a href="https://godbolt.org/z/dEbdEosb1">compiler explorer link</a>).</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">MyObject</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">val</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="kt">void</span> <span class="nf">other_func</span><span class="p">();</span>
+<span class="kt">int</span> <span class="nf">by_ref</span><span class="p">(</span> <span class="k">const</span> <span class="n">MyObject</span> <span class="o">&amp;</span> <span class="n">v</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">x</span> <span class="o">=</span> <span class="n">v</span><span class="p">.</span><span class="n">val</span><span class="p">;</span>
+    <span class="n">other_func</span><span class="p">();</span>
+    <span class="kt">int</span> <span class="n">y</span> <span class="o">=</span> <span class="n">v</span><span class="p">.</span><span class="n">val</span><span class="p">;</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">by_value</span><span class="p">(</span> <span class="n">MyObject</span> <span class="n">v</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">x</span> <span class="o">=</span> <span class="n">v</span><span class="p">.</span><span class="n">val</span><span class="p">;</span>
+    <span class="n">other_func</span><span class="p">();</span>
+    <span class="kt">int</span> <span class="n">y</span> <span class="o">=</span> <span class="n">v</span><span class="p">.</span><span class="n">val</span><span class="p">;</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>With the <code class="language-plaintext highlighter-rouge">by_ref</code> function the compiler is unable to determine if <code class="language-plaintext highlighter-rouge">v.val</code> could have changed during the call to <code class="language-plaintext highlighter-rouge">other_func</code> (e.g. it might have changed as a referenced to a global variable inside <code class="language-plaintext highlighter-rouge">other_func</code>), because of this it is unable to optimize this code to do a single load of <code class="language-plaintext highlighter-rouge">v.val</code>, with the <code class="language-plaintext highlighter-rouge">by_value</code> implementation it knows the value can not change, as nothing else references it, it is the sole owner.</p>
+
+<p>This aliasing can also happen when you have multiple arguments, even when the compiler is fully aware of the entire function here is another example (<a href="https://godbolt.org/z/34Wq5W4d8">compiler explorer</a>)</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">two_arg_by_ref</span><span class="p">(</span> <span class="k">const</span> <span class="n">MyObject</span> <span class="o">&amp;</span> <span class="n">input</span><span class="p">,</span> <span class="n">MyObject</span> <span class="o">&amp;</span> <span class="n">output</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">output</span><span class="p">.</span><span class="n">val</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">2</span><span class="p">;</span>
+    <span class="n">output</span><span class="p">.</span><span class="n">val</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">4</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">two_arg_by_value</span><span class="p">(</span> <span class="n">MyObject</span> <span class="n">input</span><span class="p">,</span> <span class="n">MyObject</span> <span class="o">&amp;</span> <span class="n">output</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">output</span><span class="p">.</span><span class="n">val</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">2</span><span class="p">;</span>
+    <span class="n">output</span><span class="p">.</span><span class="n">val</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">4</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>With this example the compiler is unable to determine if <code class="language-plaintext highlighter-rouge">input</code> and <code class="language-plaintext highlighter-rouge">output</code> point to the same object so the value could be changing for each increment, meaning the compiler can not remove the extra loads and stores.</p>
+
+<p>With this next one it might be fairly clear that they could reference the same object, how about when different argument types are used for outputting the value. (<a href="https://godbolt.org/z/nbzKvh1Kh">compiler explorer</a>)</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">two_arg_by_char_ref</span><span class="p">(</span> <span class="k">const</span> <span class="n">MyObject</span> <span class="o">&amp;</span> <span class="n">input</span><span class="p">,</span> <span class="kt">char</span> <span class="o">&amp;</span> <span class="n">output</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">output</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">2</span><span class="p">;</span>
+    <span class="n">output</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">4</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">two_arg_by_short_ref</span><span class="p">(</span> <span class="k">const</span> <span class="n">MyObject</span> <span class="o">&amp;</span> <span class="n">input</span><span class="p">,</span> <span class="kt">short</span> <span class="o">&amp;</span> <span class="n">output</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">output</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">2</span><span class="p">;</span>
+    <span class="n">output</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">4</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">two_arg_by_int_ref</span><span class="p">(</span> <span class="k">const</span> <span class="n">MyObject</span> <span class="o">&amp;</span> <span class="n">input</span><span class="p">,</span> <span class="kt">int</span> <span class="o">&amp;</span> <span class="n">output</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">output</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">2</span><span class="p">;</span>
+    <span class="n">output</span> <span class="o">+=</span> <span class="n">input</span><span class="p">.</span><span class="n">val</span> <span class="o">*</span> <span class="mi">4</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>What might come as as surprise is that the same aliasing can exist for <code class="language-plaintext highlighter-rouge">two_arg_by_int_ref</code> because <code class="language-plaintext highlighter-rouge">output</code> might be pointing to the same value as <code class="language-plaintext highlighter-rouge">input.val</code>, however the probably more unsuspecting one here is <code class="language-plaintext highlighter-rouge">two_arg_by_char_ref</code> it could possibly also point to <code class="language-plaintext highlighter-rouge">input.val</code> because it’s well-defined behavior to use <code class="language-plaintext highlighter-rouge">reinterpret_cast</code> on any object to treat it as a <code class="language-plaintext highlighter-rouge">char</code> (or ideally <code class="language-plaintext highlighter-rouge">std::byte</code>).</p>
+
+<p>Thankfully with the <code class="language-plaintext highlighter-rouge">two_arg_by_short_ref</code> version this would be undefined behavior for the <code class="language-plaintext highlighter-rouge">short</code> to point to the same object as it’s a different type that isn’t <code class="language-plaintext highlighter-rouge">char</code> so it’s free to remove the unnecessary load/stores.</p>
+
+<p>There is also the caller side of things which is impacted, let’s take a look at another example (<a href="https://godbolt.org/z/oT56M5To8">compiler explorer</a>)</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">by_ref</span><span class="p">(</span><span class="k">const</span> <span class="n">MyObject</span><span class="o">&amp;</span><span class="p">);</span>
+<span class="kt">void</span> <span class="nf">by_value</span><span class="p">(</span><span class="n">MyObject</span><span class="p">);</span>
+
+<span class="kt">int</span> <span class="nf">use_by_ref</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">MyObject</span> <span class="n">obj</span><span class="p">{</span><span class="mi">10</span><span class="p">};</span>
+    <span class="n">by_ref</span><span class="p">(</span><span class="n">obj</span><span class="p">);</span>
+    <span class="k">return</span> <span class="n">obj</span><span class="p">.</span><span class="n">val</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">use_by_value</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">MyObject</span> <span class="n">obj</span><span class="p">{</span><span class="mi">10</span><span class="p">};</span>
+    <span class="n">by_value</span><span class="p">(</span><span class="n">obj</span><span class="p">);</span>
+    <span class="k">return</span> <span class="n">obj</span><span class="p">.</span><span class="n">val</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>With this the <code class="language-plaintext highlighter-rouge">use_by_ref</code> example even though it is calling a function which is <code class="language-plaintext highlighter-rouge">const MyObject&amp;</code> that function can still change the actual value (<code class="language-plaintext highlighter-rouge">const</code> isn’t as meaningful as you would hope) so it must load the value of <code class="language-plaintext highlighter-rouge">obj.val</code> after the return while the <code class="language-plaintext highlighter-rouge">use_by_value</code> can safely assume that it will not change so does not need to load the value again.</p>
+
+<h2 id="the-abi">The ABI</h2>
+
+<p>tl;dr Each platform is different, System V (*nix) does better with aggregate handling, Windows frequently leads to Invisible Reference.</p>
+
+<p>This is heavily dependent on the platform, most of my experience is around x86 and most information here is specific to x86-64 and related to how MSVC and Unix System V (Linux, BSD, Mac, etc), to start with I’ll break things down into a few categories of what can happen</p>
+
+<ul>
+  <li>Argument is passed in register(s)</li>
+  <li>Argument is passed as a reference; reuse existing memory location (Traditional reference)</li>
+  <li>Argument is passed as a reference; new memory location just for argument (Invisible reference)</li>
+</ul>
+
+<p>These are in order from what is typically faster to slower, however assumptions about speed can have many exceptions and change over time, so if your making performance decisions use benchmarks not assumptions.</p>
+
+<p>In order to show how things work its good to have some types to work with</p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">struct</span> <span class="nc">int5</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">,</span> <span class="n">v3</span><span class="p">,</span> <span class="n">v4</span><span class="p">,</span> <span class="n">v5</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="nc">int4</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">,</span> <span class="n">v3</span><span class="p">,</span> <span class="n">v4</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="nc">int3</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">,</span> <span class="n">v3</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="nc">int2</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">v1</span><span class="p">,</span> <span class="n">v2</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="nc">int1</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">v1</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="nc">char3</span>
+<span class="p">{</span>
+    <span class="kt">char</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Now with these types let’s see how different ABIs handle them (reg is short for register here)</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: left"> </th>
+      <th style="text-align: left">MSVC x64 ABI</th>
+      <th style="text-align: left">Sys V ABI</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int5)</code></td>
+      <td style="text-align: left">Invisible reference in 1-reg</td>
+      <td style="text-align: left">Invisible reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int4)</code></td>
+      <td style="text-align: left">Invisible reference in 1-reg</td>
+      <td style="text-align: left">Packed in 2-regs</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int3)</code></td>
+      <td style="text-align: left">Invisible reference in 1-reg</td>
+      <td style="text-align: left">Packed in 2-regs</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int2)</code></td>
+      <td style="text-align: left">Packed in 1-reg</td>
+      <td style="text-align: left">Packed in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int1)</code></td>
+      <td style="text-align: left">Packed in 1-reg</td>
+      <td style="text-align: left">Packed in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(char3)</code></td>
+      <td style="text-align: left">Invisible reference in 1-reg</td>
+      <td style="text-align: left">Packed in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const int3 &amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const int2 &amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const int1 &amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(const char3 &amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int3 &amp;&amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int2 &amp;&amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(int1 &amp;&amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+    <tr>
+      <td style="text-align: left"><code class="language-plaintext highlighter-rouge">void func(char3 &amp;&amp;)</code></td>
+      <td style="text-align: left">Reference in 1-reg</td>
+      <td style="text-align: left">Reference in 1-reg</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>As you can see it gets pretty complex, references are all references however when you pass-by-value things vary based on different platforms, different sizes, there is many more complex situations, especially when it comes to System V ABI’s unpacking of structs, which can make it fairly effective passing by value. Windows also has many attributes which can be used to improve and change it’s ABI for example <code class="language-plaintext highlighter-rouge">__vectorcall</code> which allow it to unpack some structures similar behavior to System V.</p>
+
+<p>Now the “Invisible Reference” thing here is important to understand a bit better, in many cases this will be a copy  of the original data so it has a memory address to reference as the initial value is not allowed to change so referencing it is dangerous.</p>
+
+<p>This also goes for the standard “Reference” if you are using an l-value reference from something which would typically exist in registers (in x86-64 this is where most your code and calculations hopefully live).</p>
+
+<p>Even with all of this information it’s nearly impossible to define a one size fits all approach for how functions should accept arguments when it comes to performance, you should just try to consider the basics of avoiding copying heavy to copy objects and moving heavy to move objects (which hopefully you never have heavy to move objects), and focusing on readability and maintainability unless you really need that last drop of performance and this is your bottleneck then and only then bother improving it, and do it with benchmarks and on all your supported platforms.</p>
+
+<p>As a follow-up to this I plan to dig further into Vector math libraries commonly seen in 3D graphics and games and the implications an ABI can have.</p>
+
+  </div>
+<a class="u-url" href="/cpp/2022/06/27/pass-by-value-vs-pass-by-reference.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">reductor's blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">
+</li>
+</ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+<ul class="social-media-list">
+<li><a href="https://github.com/reductor"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">reductor</span></a></li>
+<li><a href="https://www.twitter.com/reductor"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#twitter"></use></svg> <span class="username">reductor</span></a></li>
+</ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>This blog is (will be) primarily focused on programming and security related stuff.</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
