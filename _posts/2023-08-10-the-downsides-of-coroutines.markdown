@@ -124,9 +124,6 @@ Coroutines optimized using the HALO (coroutine Heap Allocation eLision Optimizat
 
 A misconception arises where some believe allocation could happen on-demand at the first suspension point. However, this isn't feasible as it would require relocating all local variables and temporaries along with their references, which the compiler cannot trace across ABI boundaries.
 
-While there exist more detailed introductions to coroutines, a simplified perspective views them as transforming a function into a structure containing locals and temporaries, coupled with a resume function that executes the function incrementally.
-
-
 ## Overlooking the Complexity of Asynchronous Code
 
 The widely propagated phrase "Write async code like sync code" carries an inherent danger as it oversimplifies the intricate nature of asynchronous programming. This oversimplification can mislead developers into believing that writing asynchronous code is as straightforward as writing synchronous code. In reality, handling asynchronous operations introduces an entirely new spectrum of potential bugs and complexities that are often overlooked.
